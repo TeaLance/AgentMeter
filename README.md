@@ -22,25 +22,28 @@ count — in `/usage`-style bars, read from local files. No API key, no network.
  └──────────────────────────────────────┘
 ```
 
-## Requirements
-
-- macOS 14 (Sonoma) or later
-- Xcode 14+ / Swift 5.9+ to build
-
-## Build & run
+## Install
 
 ```bash
-# Build a double-clickable .app (menu-bar agent, no Dock icon)
-bash Scripts/bundle.sh
-open dist/AgentMeter.app
+brew install --cask TeaLance/tap/agentmeter
 ```
 
-Other options:
+The cask installs a signed & notarized `AgentMeter.app` into `/Applications`, so it
+opens with no Gatekeeper prompt. Launch it from Spotlight/Applications; it lives in the
+menu bar. To update: `brew upgrade --cask agentmeter`.
+
+Requirements: macOS 14 (Sonoma) or later.
+
+## Build from source
 
 ```bash
-swift run              # run straight from the package (dev)
-swift test             # run the parsing-layer unit tests
-open Package.swift     # open in Xcode for GUI debugging
+bash Scripts/bundle.sh   # build a double-clickable .app (menu-bar agent, no Dock icon)
+open dist/AgentMeter.app
+
+# or, for development:
+swift run                # run straight from the package
+swift test               # run the parsing-layer unit tests
+open Package.swift       # open in Xcode for GUI debugging
 ```
 
 ## How it works
@@ -139,3 +142,30 @@ but Stats is scoped to hardware/system monitoring, so an app-usage module is out
 there. AgentMeter is a standalone tool instead. If a Stats module is ever pursued, the
 `AgentMeterCore` reader layer can be lifted in as-is; only the UI/settings would be rewritten
 against Stats' module API.
+
+## Releasing (maintainer)
+
+The Homebrew cask serves a **signed + notarized** build, which is what makes it open
+without a Gatekeeper prompt. One-time setup (needs a paid Apple Developer account):
+
+1. **Developer ID certificate** — Xcode → Settings → Accounts → *Manage Certificates…* →
+   `+` → **Developer ID Application**. Confirm with `security find-identity -v -p codesigning`.
+2. **Notary credentials** — create an app-specific password at appleid.apple.com, then:
+   ```bash
+   xcrun notarytool store-credentials AgentMeter-notary \
+     --apple-id <your-apple-id> --team-id <TEAMID> --password <app-specific-password>
+   ```
+
+Then cut a release:
+
+```bash
+Scripts/release.sh 0.1.0          # universal build → sign → notarize → staple → zip + sha256
+gh release create v0.1.0 dist/AgentMeter-0.1.0.zip --title v0.1.0 --notes "…"
+```
+
+Finally bump `version` + `sha256` in the tap's `Casks/agentmeter.rb`
+([TeaLance/homebrew-tap](https://github.com/TeaLance/homebrew-tap)).
+
+## License
+
+[MIT](LICENSE) © TeaLance
