@@ -36,6 +36,10 @@ public struct CodexReader: UsageReader {
         var today = TokenBreakdown()
         var rolling = TokenBreakdown()
         var messageCount = 0
+        // Track the most-recent token_count for the context-window gauge.
+        var latestTimestamp: Date?
+        var latestContextUsed = 0
+        var latestWindow = 0
 
         for file in jsonlFiles(in: sessionsDirectory) {
             if modificationDate(of: file) < windows.earliestRelevant { continue }
@@ -52,10 +56,16 @@ public struct CodexReader: UsageReader {
 
                 switch kind {
                 case "token_count":
-                    guard let delta = line.payload?.info?.lastTokenUsage else { continue }
+                    guard let info = line.payload?.info, let delta = info.lastTokenUsage else { continue }
                     let breakdown = delta.breakdown
                     if isToday { today += breakdown }
                     if windows.isInRollingWindow(timestamp) { rolling += breakdown }
+                    if latestTimestamp == nil || timestamp > latestTimestamp! {
+                        latestTimestamp = timestamp
+                        // Current context fill = this turn's full input prompt (incl cached).
+                        latestContextUsed = delta.inputTokens ?? 0
+                        latestWindow = info.modelContextWindow ?? 0
+                    }
                 case "agent_message":
                     if isToday { messageCount += 1 }
                 default:
@@ -64,9 +74,14 @@ public struct CodexReader: UsageReader {
             }
         }
 
+        let contextWindow = (latestTimestamp != nil && latestWindow > 0)
+            ? ContextWindow(used: latestContextUsed, total: latestWindow)
+            : nil
+
         return ToolUsage(tool: .codex, available: true,
                          today: today, rolling5h: rolling,
-                         messageCount: messageCount, lastUpdated: now)
+                         messageCount: messageCount, contextWindow: contextWindow,
+                         lastUpdated: now)
     }
 }
 
@@ -86,6 +101,7 @@ private struct CodexPayload: Decodable {
 private struct CodexInfo: Decodable {
     let lastTokenUsage: CodexTokenUsage?
     let totalTokenUsage: CodexTokenUsage?
+    let modelContextWindow: Int?
 }
 
 private struct CodexTokenUsage: Decodable {

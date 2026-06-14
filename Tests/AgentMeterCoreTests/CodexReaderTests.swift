@@ -9,10 +9,11 @@ final class CodexReaderTests: XCTestCase {
         CodexReader(sessionsDirectory: dir, calendar: taipeiCalendar, rollingHours: 5)
     }
 
-    private func tokenCount(ts: Date, input: Int, cached: Int, output: Int, reasoning: Int) -> String {
+    private func tokenCount(ts: Date, input: Int, cached: Int, output: Int, reasoning: Int,
+                            window: Int = 272_000) -> String {
         let total = input + output
         return """
-        {"timestamp":"\(iso(ts))","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":\(input),"cached_input_tokens":\(cached),"output_tokens":\(output),"reasoning_output_tokens":\(reasoning),"total_tokens":\(total)},"total_token_usage":{"input_tokens":\(input),"cached_input_tokens":\(cached),"output_tokens":\(output),"reasoning_output_tokens":\(reasoning),"total_tokens":\(total)}}}}
+        {"timestamp":"\(iso(ts))","type":"event_msg","payload":{"type":"token_count","info":{"model_context_window":\(window),"last_token_usage":{"input_tokens":\(input),"cached_input_tokens":\(cached),"output_tokens":\(output),"reasoning_output_tokens":\(reasoning),"total_tokens":\(total)},"total_token_usage":{"input_tokens":\(input),"cached_input_tokens":\(cached),"output_tokens":\(output),"reasoning_output_tokens":\(reasoning),"total_tokens":\(total)}}}}
         """
     }
 
@@ -26,6 +27,21 @@ final class CodexReaderTests: XCTestCase {
         """
         {"timestamp":"\(iso(ts))","type":"session_meta","payload":{"id":"abc"}}
         """
+    }
+
+    func testContextWindowFromLatestTokenCount() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let older = tokenCount(ts: utc(2026, 6, 14, 0), input: 1_000, cached: 0, output: 10,
+                               reasoning: 0, window: 272_000)
+        // latest token_count: its last_token_usage.input_tokens is the current context fill
+        let latest = tokenCount(ts: utc(2026, 6, 14, 1, 30), input: 63_900, cached: 6_000,
+                                output: 50, reasoning: 0, window: 272_000)
+        try writeLines([older, latest], to: dir.appendingPathComponent("2026/06/14/rollout-c.jsonl"))
+
+        let usage = try reader(dir).read(now: now)
+        XCTAssertEqual(usage.contextWindow, ContextWindow(used: 63_900, total: 272_000))
     }
 
     func testMissingDirectoryReportsUnavailable() throws {

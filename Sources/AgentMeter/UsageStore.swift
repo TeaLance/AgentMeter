@@ -7,6 +7,7 @@ import AgentMeterCore
 final class UsageStore: ObservableObject {
     @Published private(set) var claude = ToolUsage(tool: .claudeCode, available: false)
     @Published private(set) var codex = ToolUsage(tool: .codex, available: false)
+    @Published private(set) var claudeQuota = ClaudeQuota(available: false)
     @Published private(set) var lastRefresh: Date?
     @Published private(set) var isRefreshing = false
 
@@ -40,9 +41,11 @@ final class UsageStore: ObservableObject {
                 ?? ToolUsage(tool: .claudeCode, available: false, lastUpdated: now)
             let codexUsage = (try? CodexReader().read(now: now))
                 ?? ToolUsage(tool: .codex, available: false, lastUpdated: now)
+            let quota = ClaudeStatusReader().read()
             await MainActor.run {
                 self.claude = claudeUsage
                 self.codex = codexUsage
+                self.claudeQuota = quota
                 self.lastRefresh = now
                 self.isRefreshing = false
             }

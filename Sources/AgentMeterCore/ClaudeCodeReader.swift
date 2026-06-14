@@ -36,6 +36,10 @@ public struct ClaudeCodeReader: UsageReader {
         var rolling = TokenBreakdown()
         var messageCount = 0
         var seen = Set<String>()
+        // Track the single most-recent assistant turn for the context-window gauge.
+        var latestTimestamp: Date?
+        var latestContextUsed = 0
+        var latestModel: String?
 
         for file in jsonlFiles(in: projectsDirectory) {
             // A file last touched before any window we care about cannot hold
@@ -70,12 +74,29 @@ public struct ClaudeCodeReader: UsageReader {
                 if windows.isInRollingWindow(timestamp) {
                     rolling += breakdown
                 }
+
+                if latestTimestamp == nil || timestamp > latestTimestamp! {
+                    latestTimestamp = timestamp
+                    // Context fill = everything fed to the model this turn (input + cache),
+                    // excluding the generated output.
+                    latestContextUsed = breakdown.input + breakdown.cacheRead + breakdown.cacheCreation
+                    latestModel = line.message?.model
+                }
             }
+        }
+
+        let contextWindow = latestTimestamp.map { _ -> ContextWindow in
+            // Transcripts record the model id WITHOUT the [1m] tier suffix, so a
+            // context that already exceeds 200k must be a 1M session.
+            let tagged = AgentMeterCore.contextWindow(forModelID: latestModel)
+            let total = latestContextUsed > 200_000 ? 1_000_000 : tagged
+            return ContextWindow(used: latestContextUsed, total: total)
         }
 
         return ToolUsage(tool: .claudeCode, available: true,
                          today: today, rolling5h: rolling,
-                         messageCount: messageCount, lastUpdated: now)
+                         messageCount: messageCount, contextWindow: contextWindow,
+                         lastUpdated: now)
     }
 }
 
@@ -89,6 +110,7 @@ private struct ClaudeLine: Decodable {
 
 private struct ClaudeMessage: Decodable {
     let id: String?
+    let model: String?
     let usage: ClaudeUsage?
 }
 

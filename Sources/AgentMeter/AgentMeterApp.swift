@@ -45,16 +45,12 @@ struct AgentMeterApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        // After the Settings window is dismissed (app loses focus), drop the Dock
+        // icon again so we stay a menu-bar-only app.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willResignActiveNotification, object: nil, queue: .main
+        ) { _ in
+            NSApp.setActivationPolicy(.accessory)
+        }
     }
-}
-
-/// Open the Settings scene from a button, across macOS versions.
-@MainActor
-func openSettingsWindow() {
-    if #available(macOS 14, *) {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-    } else {
-        NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-    }
-    NSApp.activate(ignoringOtherApps: true)
 }

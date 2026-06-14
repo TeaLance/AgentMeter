@@ -11,6 +11,9 @@ struct SettingsView: View {
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
 
+    @State private var bridgeState = StatusLineBridge.shared.state()
+    @State private var bridgeError: String?
+
     var body: some View {
         Form {
             Picker("更新頻率", selection: $interval) {
@@ -38,9 +41,48 @@ struct SettingsView: View {
                     Text(loginError).font(.caption).foregroundStyle(.red)
                 }
             }
+
+            Section("即時額度（Claude，實驗性）") {
+                Toggle("啟用即時額度（statusLine 橋接）", isOn: bridgeBinding)
+                Text(bridgeHelpText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let bridgeError {
+                    Text(bridgeError).font(.caption).foregroundStyle(.red)
+                }
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 360)
+        .frame(width: 380)
+    }
+
+    private var bridgeBinding: Binding<Bool> {
+        Binding(
+            get: { bridgeState == .enabled },
+            set: { setBridge($0) }
+        )
+    }
+
+    private var bridgeHelpText: String {
+        switch bridgeState {
+        case .enabled:
+            return "已啟用。請在 Claude Code 送出一次訊息，5h／每週額度條才會出現。會在 ~/.claude/settings.json 設定 statusLine（已備份原檔）。"
+        case .conflict:
+            return "偵測到你已有自訂 statusLine，為避免覆蓋而未啟用。可手動整合或先移除既有設定。"
+        case .disabled:
+            return "啟用後會讀取 Claude Code 傳給 statusLine 的官方資料來顯示真實 5h／每週 %。不連網、不讀 Keychain。"
+        }
+    }
+
+    private func setBridge(_ enabled: Bool) {
+        do {
+            if enabled { try StatusLineBridge.shared.enable() }
+            else { try StatusLineBridge.shared.disable() }
+            bridgeError = nil
+        } catch {
+            bridgeError = error.localizedDescription
+        }
+        bridgeState = StatusLineBridge.shared.state()
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {

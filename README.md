@@ -1,19 +1,25 @@
 # AgentMeter
 
-A lightweight macOS **menu-bar app** that shows your **Claude Code** and **OpenAI Codex** usage at a glance — today's token usage, message count, and a rolling-5h estimate — read entirely from local files. No API key, no network.
+A lightweight macOS **menu-bar app** that shows your **Claude Code** and **OpenAI Codex**
+usage at a glance — context-window fill, subscription limits, today's tokens and message
+count — in `/usage`-style bars, read from local files. No API key, no network.
 
 ```
  ⊙ 2.4M        ← menu-bar item (combined "billable" tokens used today)
- ┌─────────────────────────────┐
- │ AgentMeter                  │
- │ Claude Code            ●    │
- │   2.4M  今日 tokens          │
- │   輸入 / 輸出 / 快取寫 / 快取讀  │
- │   訊息 542   近 5h（估計）2.4M │
- │ Codex                  ●    │
- │   0  今日 tokens             │
- │ 最後更新 22:50   [立即更新][設定][結束] │
- └─────────────────────────────┘
+ ┌──────────────────────────────────────┐
+ │ AgentMeter                            │
+ │ Claude Code                       ●   │
+ │   Context window      289k / 1.0M (29%)│
+ │   ▕███▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▏             │
+ │   5-hour limit              39% · 2h  │   ← real, when the bridge is on
+ │   ▕███████▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▏             │
+ │   Weekly · all models       14% · 4d  │
+ │   ▕███▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▏             │
+ │   今日 tokens 2.4M   訊息 542   近5h 2.4M│
+ │ Codex                             ●   │
+ │   Context window      …                │
+ │ 最後更新 22:50  [立即更新][設定…][結束]   │
+ └──────────────────────────────────────┘
 ```
 
 ## Requirements
@@ -59,6 +65,22 @@ Key details:
   The full breakdown — including cache reads — is shown in the dropdown.
 - **Time windows:** timestamps are UTC; "today" and the rolling window are evaluated in
   your local time zone.
+- **Context window:** taken from the most-recent session's last turn. Transcripts record
+  the model id *without* the `[1m]` tier suffix, so a context above 200k is treated as a
+  1M-window session; Codex reports `model_context_window` directly.
+
+## Real subscription limits (the 5h / weekly bars)
+
+The true `39% · resets 2h` figures are **not** stored in any local file — Claude Code only
+exposes them as JSON piped to a **statusLine command**. AgentMeter ships a tiny bridge that
+captures that snapshot to `~/.claude/agentmeter-status.json` (no network, no Keychain).
+
+Enable it from **Settings → 即時額度**. That backs up `~/.claude/settings.json`, installs
+`~/.claude/agentmeter-statusline.sh`, and points `statusLine` at it. Send one message in
+Claude Code and the `5-hour limit` / `Weekly` bars appear with real percentages and reset
+times. If you already have a custom statusLine, AgentMeter won't overwrite it. Toggle off to
+restore. Until it's enabled, AgentMeter shows the local **"近 5h（估計）"** proxy instead
+(tokens used in the last 5 hours — not a real cap).
 
 ## Settings
 
@@ -66,18 +88,15 @@ Key details:
 - What the menu-bar text shows (combined / Claude only / Codex only)
 - Show/hide each tool
 - Launch at login (via `SMAppService`)
-
-## Why "近 5h（估計）" is an estimate
-
-Neither tool persists your subscription's real rate-limit cap to disk, so a true
-"% remaining" can't be computed locally. AgentMeter instead shows the tokens used in
-the **last 5 hours** as a rough proxy, and labels it as an estimate.
+- Real subscription limits via the statusLine bridge (above)
 
 ## Privacy
 
 AgentMeter only **reads** files under `~/.claude` and `~/.codex` on your machine. It makes
-no network requests and sends nothing anywhere. It is **not sandboxed** (it needs to read
-those home-directory paths), so it isn't distributed via the Mac App Store.
+no network requests, reads no Keychain, and sends nothing anywhere. The statusLine bridge
+only persists the JSON Claude Code already hands to status-line commands. The app is **not
+sandboxed** (it needs to read those home-directory paths), so it isn't distributed via the
+Mac App Store.
 
 ## Tests
 
@@ -86,16 +105,19 @@ swift test
 ```
 
 The `AgentMeterCore` parsing/aggregation logic is covered by unit tests (date windowing,
-de-duplication, Codex delta summing, malformed-line handling, missing-directory handling,
-compact number formatting).
+de-duplication, Codex delta summing, context-window detection, status-file parsing,
+malformed-line handling, missing-directory handling, compact number formatting).
 
 ## Project layout
 
 ```
-Sources/AgentMeterCore/   reusable parsing layer (no UI)
-Sources/AgentMeter/       SwiftUI MenuBarExtra app
-Tests/AgentMeterCoreTests/ unit tests + synthetic fixtures
-Scripts/bundle.sh         wrap the binary into AgentMeter.app
+Sources/AgentMeterCore/        reusable parsing layer (no UI)
+  ClaudeCodeReader / CodexReader / ClaudeStatusReader / ModelContextWindow / UsageModels …
+Sources/AgentMeter/            SwiftUI MenuBarExtra app
+  MenuContentView / MeterBar / SettingsView / StatusLineBridge / UsageStore …
+Tests/AgentMeterCoreTests/     unit tests + synthetic fixtures
+Scripts/bundle.sh              wrap the binary into AgentMeter.app
+Scripts/agentmeter-statusline.sh  the statusLine bridge script
 ```
 
 ## Relation to Stats

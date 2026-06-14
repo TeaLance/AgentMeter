@@ -10,9 +10,10 @@ final class ClaudeCodeReaderTests: XCTestCase {
     }
 
     private func assistantLine(ts: Date, id: String, req: String,
-                               input: Int, output: Int, cc: Int, cr: Int) -> String {
+                               input: Int, output: Int, cc: Int, cr: Int,
+                               model: String = "claude-test") -> String {
         """
-        {"type":"assistant","timestamp":"\(iso(ts))","requestId":"\(req)","message":{"id":"\(id)","role":"assistant","usage":{"input_tokens":\(input),"output_tokens":\(output),"cache_creation_input_tokens":\(cc),"cache_read_input_tokens":\(cr)}}}
+        {"type":"assistant","timestamp":"\(iso(ts))","requestId":"\(req)","message":{"id":"\(id)","role":"assistant","model":"\(model)","usage":{"input_tokens":\(input),"output_tokens":\(output),"cache_creation_input_tokens":\(cc),"cache_read_input_tokens":\(cr)}}}
         """
     }
 
@@ -56,6 +57,36 @@ final class ClaudeCodeReaderTests: XCTestCase {
         XCTAssertEqual(usage.messageCount, 2)
         // rolling 5h = a only
         XCTAssertEqual(usage.rolling5h, TokenBreakdown(input: 100, output: 50, cacheCreation: 10, cacheRead: 20))
+    }
+
+    func testContextWindowFromLatestTurnUses1MForOneMillionModel() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let older = assistantLine(ts: utc(2026, 6, 14, 0), id: "old", req: "r0",
+                                  input: 10, output: 10, cc: 0, cr: 0, model: "claude-x")
+        // latest turn (largest timestamp) — its context fill is what we report
+        let latest = assistantLine(ts: utc(2026, 6, 14, 1, 30), id: "new", req: "r1",
+                                   input: 50_000, output: 1_000, cc: 4_000, cr: 6_000,
+                                   model: "claude-opus-4-8[1m]")
+        try writeLines([older, latest], to: dir.appendingPathComponent("p/s.jsonl"))
+
+        let usage = try reader(dir).read(now: now)
+        // used = input + cacheRead + cacheCreation = 50_000 + 6_000 + 4_000
+        XCTAssertEqual(usage.contextWindow, ContextWindow(used: 60_000, total: 1_000_000))
+    }
+
+    func testContextWindowInfers1MWhenUsedExceeds200kWithoutTag() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        // Real transcripts record the model WITHOUT the [1m] suffix, so a >200k
+        // context must be a 1M session.
+        let line = assistantLine(ts: utc(2026, 6, 14, 1), id: "m", req: "r",
+                                 input: 250_000, output: 100, cc: 0, cr: 0, model: "claude-opus-4-8")
+        try writeLines([line], to: dir.appendingPathComponent("p/s.jsonl"))
+
+        let usage = try reader(dir).read(now: now)
+        XCTAssertEqual(usage.contextWindow, ContextWindow(used: 250_000, total: 1_000_000))
     }
 
     func testDedupAcrossSeparateSessionFiles() throws {
