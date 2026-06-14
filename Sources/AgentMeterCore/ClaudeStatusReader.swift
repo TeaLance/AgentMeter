@@ -35,7 +35,7 @@ public struct ClaudeStatusReader {
 
         var contextWindow: ContextWindow?
         if let cw = file.contextWindow, let used = cw.totalInputTokens,
-           let total = cw.maxTokens, total > 0 {
+           let total = cw.maxTokens ?? cw.contextWindowSize, total > 0 {
             contextWindow = ContextWindow(used: used, total: total)
         }
 
@@ -71,6 +71,7 @@ private struct StatusFile: Decodable {
         let usedPercentage: Double?
         let totalInputTokens: Int?
         let maxTokens: Int?
+        let contextWindowSize: Int?
     }
 }
 

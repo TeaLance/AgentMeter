@@ -4,7 +4,7 @@ import ServiceManagement
 struct SettingsView: View {
     @EnvironmentObject private var store: UsageStore
     @AppStorage(SettingsKeys.interval) private var interval: Double = 30
-    @AppStorage(SettingsKeys.labelMode) private var labelModeRaw = MenuBarLabelMode.combined.rawValue
+    @AppStorage(SettingsKeys.menuBarMetrics) private var metricsCSV = defaultMenuBarMetricsCSV
     @AppStorage(SettingsKeys.showClaude) private var showClaude = true
     @AppStorage(SettingsKeys.showCodex) private var showCodex = true
 
@@ -23,13 +23,15 @@ struct SettingsView: View {
             }
             .onChange(of: interval) { _, newValue in store.setInterval(newValue) }
 
-            Picker("選單列顯示", selection: $labelModeRaw) {
-                ForEach(MenuBarLabelMode.allCases) { mode in
-                    Text(mode.title).tag(mode.rawValue)
+            Section("選單列顯示內容（可多選）") {
+                ForEach(MenuBarMetric.allCases) { metric in
+                    Toggle(metric.settingsTitle, isOn: metricBinding(metric))
                 }
+                Text("沒資料的項目會自動隱藏；全部隱藏時顯示一個小圖示。")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
-            Section {
+            Section("下拉面板") {
                 Toggle("顯示 Claude Code", isOn: $showClaude)
                 Toggle("顯示 Codex", isOn: $showCodex)
             }
@@ -54,6 +56,17 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 380)
+    }
+
+    private func metricBinding(_ metric: MenuBarMetric) -> Binding<Bool> {
+        Binding(
+            get: { MenuBarMetric.list(fromCSV: metricsCSV).contains(metric) },
+            set: { isOn in
+                var set = Set(MenuBarMetric.list(fromCSV: metricsCSV))
+                if isOn { set.insert(metric) } else { set.remove(metric) }
+                metricsCSV = MenuBarMetric.csv(from: set)
+            }
+        )
     }
 
     private var bridgeBinding: Binding<Bool> {

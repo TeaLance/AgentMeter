@@ -2,27 +2,14 @@ import Foundation
 
 enum SettingsKeys {
     static let interval = "refreshIntervalSeconds"
-    static let labelMode = "menuBarLabelMode"
+    /// CSV of MenuBarMetric raw values shown inline in the menu bar.
+    static let menuBarMetrics = "menuBarMetrics"
     static let showClaude = "showClaude"
     static let showCodex = "showCodex"
 }
 
-/// What the menu-bar text shows.
-enum MenuBarLabelMode: String, CaseIterable, Identifiable {
-    case combined
-    case claude
-    case codex
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .combined: return "合計 (Claude + Codex)"
-        case .claude:   return "只 Claude Code"
-        case .codex:    return "只 Codex"
-        }
-    }
-}
+/// Default menu-bar selection: a single combined token figure (v1/v2 behaviour).
+let defaultMenuBarMetricsCSV = MenuBarMetric.combinedTokens.rawValue
 
 /// Refresh interval choices, in seconds.
 let refreshIntervalOptions: [(label: String, seconds: Double)] = [

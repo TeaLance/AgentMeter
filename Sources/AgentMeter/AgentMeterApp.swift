@@ -6,18 +6,13 @@ import AgentMeterCore
 struct AgentMeterApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = UsageStore()
-    @AppStorage(SettingsKeys.labelMode) private var labelModeRaw = MenuBarLabelMode.combined.rawValue
 
     var body: some Scene {
         MenuBarExtra {
             MenuContentView()
                 .environmentObject(store)
         } label: {
-            // System renders this as the menu-bar item. Image + compact number.
-            let img = NSImage(systemSymbolName: "gauge.with.dots.needle.33percent",
-                              accessibilityDescription: "Usage")!
-            Image(nsImage: img)
-            Text(labelText)
+            MenuBarLabel(store: store)
         }
         .menuBarExtraStyle(.window)
 
@@ -26,16 +21,20 @@ struct AgentMeterApp: App {
                 .environmentObject(store)
         }
     }
+}
 
-    private var labelMode: MenuBarLabelMode {
-        MenuBarLabelMode(rawValue: labelModeRaw) ?? .combined
-    }
+/// The menu-bar item: renders the user-selected metrics inline (data-less ones
+/// hidden), or a gauge icon when nothing is available.
+struct MenuBarLabel: View {
+    @ObservedObject var store: UsageStore
+    @AppStorage(SettingsKeys.menuBarMetrics) private var metricsCSV = defaultMenuBarMetricsCSV
 
-    private var labelText: String {
-        switch labelMode {
-        case .combined: return store.combinedTodayBillable.compactTokenString
-        case .claude:   return store.claude.today.billableTotal.compactTokenString
-        case .codex:    return store.codex.today.billableTotal.compactTokenString
+    var body: some View {
+        let text = MenuBarMetric.barString(MenuBarMetric.list(fromCSV: metricsCSV), store: store)
+        if text.isEmpty {
+            Image(systemName: "gauge.with.dots.needle.33percent")
+        } else {
+            Text(text)
         }
     }
 }

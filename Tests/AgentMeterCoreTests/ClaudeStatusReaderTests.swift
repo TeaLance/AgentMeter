@@ -66,6 +66,38 @@ final class ClaudeStatusReaderTests: XCTestCase {
         XCTAssertEqual(q.contextPercent ?? 0, 6.4, accuracy: 1e-6)
     }
 
+    func testParsesContextWindowRealShape() throws {
+        // The real bridge payload uses `context_window_size` + `total_input_tokens`.
+        let file = try write(#"""
+        {
+          "context_window": {
+            "total_input_tokens": 375932,
+            "context_window_size": 1000000,
+            "used_percentage": 38
+          }
+        }
+        """#)
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+
+        let q = ClaudeStatusReader(statusFile: file).read()
+        XCTAssertEqual(q.contextWindow, ContextWindow(used: 375_932, total: 1_000_000))
+        XCTAssertEqual(q.contextPercent ?? 0, 38, accuracy: 1e-6)
+    }
+
+    func testParsesEpochResetsInRateLimits() throws {
+        // Real payload delivers resets_at as epoch seconds.
+        let epoch = utc(2026, 6, 14, 17).timeIntervalSince1970
+        let file = try write(#"""
+        { "rate_limits": { "five_hour": { "used_percentage": 62, "resets_at": \#(Int(epoch)) },
+                            "seven_day": { "used_percentage": 16, "resets_at": \#(Int(epoch)) } } }
+        """#)
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+
+        let q = ClaudeStatusReader(statusFile: file).read()
+        XCTAssertEqual(q.fiveHour?.usedPercent ?? 0, 62, accuracy: 1e-6)
+        XCTAssertEqual(q.fiveHour?.resetsAt?.timeIntervalSince1970 ?? 0, epoch, accuracy: 1.0)
+    }
+
     func testNoRateLimitsStillAvailableButNilWindows() throws {
         let file = try write(#"{ "asOf": "2026-06-14T15:00:00Z" }"#)
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }

@@ -5,7 +5,7 @@ usage at a glance — context-window fill, subscription limits, today's tokens a
 count — in `/usage`-style bars, read from local files. No API key, no network.
 
 ```
- ⊙ 2.4M        ← menu-bar item (combined "billable" tokens used today)
+ CC 231K  5h 62%  7d 16%   ← menu-bar item shows the metrics you pick (see below)
  ┌──────────────────────────────────────┐
  │ AgentMeter                            │
  │ Claude Code                       ●   │
@@ -82,11 +82,23 @@ times. If you already have a custom statusLine, AgentMeter won't overwrite it. T
 restore. Until it's enabled, AgentMeter shows the local **"近 5h（估計）"** proxy instead
 (tokens used in the last 5 hours — not a real cap).
 
+## Menu-bar item (multi-metric)
+
+The menu-bar item shows the metrics you pick, inline, so you don't have to open the
+dropdown — e.g. `CC 231K  5h 62%  7d 16%  Σ 231K`. Choose them in
+**Settings → 選單列顯示內容（可多選）**: today tokens, 5h %, weekly %, context %, message
+count — for Claude, Codex, or the combined total. Rules:
+
+- Metrics with no data are auto-hidden (e.g. 5h/weekly before the bridge is on, or Codex
+  when unused today). If everything is hidden, a gauge icon is shown.
+- A `CC` / `CX` prefix is added only when the *same* metric is shown for both tools (so you
+  can tell them apart). 5h / weekly are Claude-only and never prefixed.
+
 ## Settings
 
+- Menu-bar contents (multi-select, above)
 - Refresh interval (15s / 30s / 1m / 5m)
-- What the menu-bar text shows (combined / Claude only / Codex only)
-- Show/hide each tool
+- Show/hide each tool in the dropdown
 - Launch at login (via `SMAppService`)
 - Real subscription limits via the statusLine bridge (above)
 
