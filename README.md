@@ -1,5 +1,11 @@
 # AgentMeter
 
+[![Latest release](https://img.shields.io/github/v/release/TeaLance/AgentMeter?sort=semver)](https://github.com/TeaLance/AgentMeter/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/TeaLance/AgentMeter/total)](https://github.com/TeaLance/AgentMeter/releases)
+![Platform](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)
+[![License: MIT](https://img.shields.io/github/license/TeaLance/AgentMeter)](LICENSE)
+[![gitleaks](https://img.shields.io/badge/protected%20by-gitleaks-blue)](https://github.com/gitleaks/gitleaks-action)
+
 A lightweight macOS **menu-bar app** that shows your **Claude Code** and **OpenAI Codex**
 usage at a glance — context-window fill, subscription limits, today's tokens and message
 count — in `/usage`-style bars, read from local files. No API key, no network.
@@ -32,7 +38,12 @@ The cask installs a signed & notarized `AgentMeter.app` into `/Applications`, so
 opens with no Gatekeeper prompt. Launch it from Spotlight/Applications; it lives in the
 menu bar. To update: `brew upgrade --cask agentmeter`.
 
-Requirements: macOS 14 (Sonoma) or later.
+**Prefer not to use the terminal?** Download the latest `AgentMeter-x.y.z.zip` from the
+[**Releases page**](https://github.com/TeaLance/AgentMeter/releases/latest), unzip it, and
+drag `AgentMeter.app` into `/Applications`. It's notarized, so it just opens — no
+right-click-to-open dance.
+
+Requirements: macOS 14 (Sonoma) or later. Universal (Apple Silicon + Intel).
 
 ## Build from source
 
