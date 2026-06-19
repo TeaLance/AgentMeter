@@ -6,11 +6,15 @@ import AgentMeterCore
 struct AgentMeterApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = UsageStore()
+    @StateObject private var lang = LanguageStore()
+    @StateObject private var colors = ServiceColorStore()
 
     var body: some Scene {
         MenuBarExtra {
             MenuContentView()
                 .environmentObject(store)
+                .environmentObject(lang)
+                .environmentObject(colors)
         } label: {
             MenuBarLabel(store: store)
         }
@@ -19,6 +23,8 @@ struct AgentMeterApp: App {
         Settings {
             SettingsView()
                 .environmentObject(store)
+                .environmentObject(lang)
+                .environmentObject(colors)
         }
     }
 }

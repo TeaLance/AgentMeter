@@ -2,157 +2,212 @@ import SwiftUI
 import AppKit
 import AgentMeterCore
 
+/// The dropdown panel: editorial-minimal. Per service, a big "hero" number
+/// (Claude defaults to 5-hour, switchable to weekly; Codex shows context% since
+/// quota needs the network), aligned mini-rows for the other metrics, and a
+/// footer of today's tokens + messages. Hairlines, no cards, tabular numbers.
 struct MenuContentView: View {
     @EnvironmentObject private var store: UsageStore
+    @EnvironmentObject private var lang: LanguageStore
+    @EnvironmentObject private var colors: ServiceColorStore
     @AppStorage(SettingsKeys.showClaude) private var showClaude = true
     @AppStorage(SettingsKeys.showCodex) private var showCodex = true
+    @AppStorage(SettingsKeys.heroMetricClaude) private var claudeHeroRaw = ClaudeHero.fiveHour.rawValue
     @Environment(\.openSettings) private var openSettings
 
+    private var claudeHero: ClaudeHero { ClaudeHero(rawValue: claudeHeroRaw) ?? .fiveHour }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("AgentMeter").font(.headline)
-                Spacer()
-                if store.isRefreshing { ProgressView().controlSize(.small) }
-            }
-
-            if showClaude { claudeSection }
+        VStack(alignment: .leading, spacing: AM.Space.m) {
+            header
+            Hairline()
+            if showClaude { claudeBlock }
             if showCodex {
-                if showClaude { Divider() }
-                codexSection
+                if showClaude { Hairline() }
+                codexBlock
             }
-
-            Divider()
-            footer
         }
-        .padding(14)
-        .frame(width: 330)
+        .padding(AM.Space.l)
+        .frame(width: 312)
+        .background(AM.paper)
+        .foregroundStyle(AM.ink)
+    }
+
+    // MARK: Header
+
+    private var header: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(lang.tr("USAGE", "用量"))
+                    .font(.system(size: 11, weight: .semibold)).tracking(0.5)
+                    .foregroundStyle(AM.ink2)
+                Text(updatedText).font(.system(size: 11)).foregroundStyle(AM.ink3)
+            }
+            Spacer()
+            HStack(spacing: 2) {
+                if store.isRefreshing { ProgressView().controlSize(.small).scaleEffect(0.7) }
+                iconButton("arrow.clockwise") { store.refreshNow() }
+                iconButton("gearshape") { openSettingsWindow() }
+                iconButton("power") { NSApplication.shared.terminate(nil) }
+            }
+        }
+    }
+
+    private func iconButton(_ name: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: name).font(.system(size: 12))
+                .foregroundStyle(AM.ink2)
+                .frame(width: 24, height: 20)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Claude
 
-    private var claudeSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionHeader("Claude Code", available: store.claude.available)
-
+    private var claudeBlock: some View {
+        VStack(alignment: .leading, spacing: AM.Space.s) {
+            serviceHeader(name: "Claude Code", tool: .claudeCode, available: store.claude.available)
             if store.claude.available {
-                // Prefer the authoritative context window from the bridge; fall back
-                // to the transcript-derived one.
-                if let cw = store.claudeQuota.contextWindow ?? store.claude.contextWindow {
-                    MeterBar(title: "Context window",
-                             valueText: contextValue(cw, percent: store.claudeQuota.contextPercent),
-                             fraction: cw.fraction)
-                }
-
-                if store.claudeQuota.available, store.claudeQuota.fiveHour != nil || store.claudeQuota.weekly != nil {
-                    if let fh = store.claudeQuota.fiveHour {
-                        MeterBar(title: "5-hour limit", valueText: quotaValue(fh), fraction: fh.usedPercent / 100)
-                    }
-                    if let wk = store.claudeQuota.weekly {
-                        MeterBar(title: "Weekly · all models", valueText: quotaValue(wk), fraction: wk.usedPercent / 100)
-                    }
-                } else {
-                    Button {
-                        openSettingsWindow()
-                    } label: {
-                        Label("啟用即時額度顯示 5h／每週 %", systemImage: "bolt.horizontal.circle")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.link)
-                }
-
-                secondaryMetrics(store.claude)
+                claudeBody
+                footer(store.claude)
             } else {
-                Text("未偵測到使用資料").font(.caption).foregroundStyle(.secondary)
+                noData
             }
         }
+    }
+
+    @ViewBuilder private var claudeBody: some View {
+        let q = store.claudeQuota
+        let cw = q.contextWindow ?? store.claude.contextWindow
+        let ctxPct = q.contextPercent ?? cw.map { $0.fraction * 100 }
+        let hasQuota = q.available && (q.fiveHour != nil || q.weekly != nil)
+
+        VStack(alignment: .leading, spacing: AM.Space.m) {
+            if hasQuota {
+                let useWeekly = (claudeHero == .weekly && q.weekly != nil) || q.fiveHour == nil
+                if let hero = useWeekly ? q.weekly : q.fiveHour {
+                    HStack(alignment: .top) {
+                        heroFromQuota(hero, label: useWeekly ? lang.tr("weekly", "每週額度")
+                                                             : lang.tr("5-hour", "5 小時額度"))
+                        Spacer()
+                        SegmentedPair(
+                            rightSelected: Binding(
+                                get: { claudeHero == .weekly },
+                                set: { claudeHeroRaw = ($0 ? ClaudeHero.weekly : .fiveHour).rawValue }),
+                            leftLabel: "5h", rightLabel: lang.tr("Wk", "週"))
+                    }
+                    ThinBar(fraction: hero.usedPercent / 100, level: .forUsed(percent: hero.usedPercent))
+                }
+                if let cw, let ctxPct {
+                    MetricRow(label: lang.tr("Context", "Context"), fraction: cw.fraction,
+                              value: contextMini(cw, ctxPct), level: .forUsed(percent: ctxPct))
+                }
+                if let other = useWeekly ? q.fiveHour : q.weekly {
+                    MetricRow(label: useWeekly ? lang.tr("5-hour", "5 小時") : lang.tr("weekly", "每週"),
+                              fraction: other.usedPercent / 100, value: quotaMini(other),
+                              level: .forUsed(percent: other.usedPercent))
+                }
+            } else if let cw, let ctxPct {
+                heroFromPercent(ctxPct, label: lang.tr("context", "Context"))
+                ThinBar(fraction: cw.fraction, level: .forUsed(percent: ctxPct))
+                enableQuotaLink
+            } else {
+                enableQuotaLink
+            }
+        }
+    }
+
+    private var enableQuotaLink: some View {
+        Button { openSettingsWindow() } label: {
+            Text(lang.tr("Enable live 5h / weekly quota", "啟用即時 5h／每週額度"))
+                .font(.system(size: 11))
+        }
+        .buttonStyle(.link)
     }
 
     // MARK: Codex
 
-    private var codexSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionHeader("Codex", available: store.codex.available)
+    private var codexBlock: some View {
+        VStack(alignment: .leading, spacing: AM.Space.s) {
+            serviceHeader(name: "Codex", tool: .codex, available: store.codex.available)
             if store.codex.available {
-                if let cw = store.codex.contextWindow {
-                    MeterBar(title: "Context window", valueText: contextValue(cw), fraction: cw.fraction)
+                VStack(alignment: .leading, spacing: AM.Space.m) {
+                    if let cw = store.codex.contextWindow {
+                        heroFromPercent(cw.fraction * 100, label: lang.tr("context", "Context"))
+                        ThinBar(fraction: cw.fraction, level: .forUsed(percent: cw.fraction * 100))
+                    }
                 }
-                secondaryMetrics(store.codex)
+                footer(store.codex)
             } else {
-                Text("未偵測到使用資料").font(.caption).foregroundStyle(.secondary)
+                noData
             }
         }
     }
 
-    // MARK: Pieces
+    // MARK: Shared pieces
 
-    private func sectionHeader(_ name: String, available: Bool) -> some View {
-        HStack {
-            Text(name).font(.subheadline).bold()
+    private func serviceHeader(name: String, tool: AgentTool, available: Bool) -> some View {
+        HStack(spacing: AM.Space.s) {
+            ServiceSwatch(color: colors.color(for: tool))
+            Text(name).font(.system(size: 13.5, weight: .semibold))
             Spacer()
             Circle()
-                .fill(available ? Color.green : Color.secondary.opacity(0.4))
+                .fill(available ? Color(amLight: "#27A35A", dark: "#34C759") : AM.ink3.opacity(0.6))
                 .frame(width: 7, height: 7)
         }
     }
 
-    private func secondaryMetrics(_ usage: ToolUsage) -> some View {
-        HStack(spacing: 18) {
-            metric("今日 tokens", usage.today.billableTotal.compactTokenString)
-            metric("訊息", "\(usage.messageCount)")
-            metric("近 5h（估計）", usage.rolling5h.billableTotal.compactTokenString)
-        }
+    private func heroFromQuota(_ w: QuotaWindow, label: String) -> some View {
+        var full = label
+        if let r = shortReset(until: w.resetsAt) { full += " · " + lang.tr("resets \(r)", "\(r) 重置") }
+        return HeroNumber(percent: w.usedPercent, label: full, level: .forUsed(percent: w.usedPercent))
     }
 
-    private func metric(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(label).font(.caption2).foregroundStyle(.secondary)
-            Text(value).font(.callout).bold()
-        }
+    private func heroFromPercent(_ pct: Double, label: String) -> some View {
+        HeroNumber(percent: pct, label: label, level: .forUsed(percent: pct))
     }
 
-    private var footer: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(lastUpdatedText).font(.caption).foregroundStyle(.secondary)
-            HStack {
-                Button("立即更新") { store.refreshNow() }
+    private func footer(_ u: ToolUsage) -> some View {
+        VStack(alignment: .leading, spacing: AM.Space.s) {
+            Hairline()
+            HStack(spacing: AM.Space.l) {
+                footerItem(lang.tr("Today", "今日"), "\(u.today.billableTotal.compactTokenString) tokens")
+                footerItem(lang.tr("Messages", "訊息"), "\(u.messageCount)")
                 Spacer()
-                Button("設定…") { openSettingsWindow() }
-                Button("結束") { NSApplication.shared.terminate(nil) }
             }
         }
     }
 
-    // MARK: Formatting
-
-    private func contextValue(_ cw: ContextWindow, percent: Double? = nil) -> String {
-        let pct = Int((percent ?? cw.fraction * 100).rounded())
-        return "\(cw.used.compactTokenString) / \(cw.total.compactTokenString) (\(pct)%)"
+    private func footerItem(_ label: String, _ value: String) -> Text {
+        (Text(label + " ").foregroundColor(AM.ink2) + Text(value).foregroundColor(AM.ink).bold())
+            .font(.system(size: 11.5).monospacedDigit())
     }
 
-    private func quotaValue(_ w: QuotaWindow) -> String {
+    private var noData: some View {
+        Text(lang.tr("No usage detected", "未偵測到使用資料"))
+            .font(.system(size: 11)).foregroundStyle(AM.ink2)
+    }
+
+    // MARK: Formatting
+
+    private func contextMini(_ cw: ContextWindow, _ pct: Double) -> String {
+        "\(Int(pct.rounded()))% · \(cw.used.compactTokenString)"
+    }
+
+    private func quotaMini(_ w: QuotaWindow) -> String {
         let pct = "\(Int(w.usedPercent.rounded()))%"
-        if let reset = shortReset(until: w.resetsAt) {
-            return "\(pct) · resets \(reset)"
-        }
+        if let r = shortReset(until: w.resetsAt) { return "\(pct) · \(r)" }
         return pct
     }
 
-    private var lastUpdatedText: String {
-        guard let date = store.lastRefresh else { return "尚未更新" }
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm:ss"
-        var text = "最後更新：\(f.string(from: date))"
-        if let asOf = store.claudeQuota.asOf {
-            text += " · 額度 as of \(f.string(from: asOf))"
-        }
-        return text
+    private var updatedText: String {
+        guard let d = store.lastRefresh else { return lang.tr("not updated yet", "尚未更新") }
+        let s = max(0, Int(Date().timeIntervalSince(d)))
+        let ago = s < 60 ? "\(s)s" : "\(s / 60)m"
+        return lang.tr("updated \(ago) ago", "\(ago)前已更新")
     }
 
     private func openSettingsWindow() {
-        // Becoming a regular app makes the Settings window reliably show and focus
-        // from a menu-bar-only (.accessory) app. AppDelegate reverts to .accessory
-        // once the window is dismissed.
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         openSettings()

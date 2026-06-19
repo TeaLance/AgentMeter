@@ -6,7 +6,13 @@ enum SettingsKeys {
     static let menuBarMetrics = "menuBarMetrics"
     static let showClaude = "showClaude"
     static let showCodex = "showCodex"
+    /// Which quota the Claude panel shows as its hero number (`ClaudeHero`).
+    static let heroMetricClaude = "heroMetricClaude"
 }
+
+/// The Claude panel's primary "hero" metric. Default 5-hour; the panel's
+/// `[5h｜週]` toggle and Settings can switch it to weekly.
+enum ClaudeHero: String { case fiveHour, weekly }
 
 /// Default menu-bar selection: a single combined token figure (v1/v2 behaviour).
 let defaultMenuBarMetricsCSV = MenuBarMetric.combinedTokens.rawValue
