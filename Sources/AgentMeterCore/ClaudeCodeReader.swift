@@ -103,6 +103,50 @@ public struct ClaudeCodeReader: UsageReader {
     }
 }
 
+extension ClaudeCodeReader {
+    /// Per-day, per-model usage over `range`. Independent of `read(now:)` to keep
+    /// the live panel path untouched; both parse rows identically.
+    public func history(range: DateInterval) throws -> UsageHistory {
+        var acc = HistoryAccumulator(tool: .claudeCode, range: range, calendar: calendar)
+        guard directoryExists(projectsDirectory) else { return acc.finish() }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        var seen = Set<String>()
+
+        for file in jsonlFiles(in: projectsDirectory) {
+            // Lines are appended in time order, so a file last touched before the
+            // range start cannot contain rows inside the range.
+            if modificationDate(of: file) < range.start { continue }
+            guard let content = try? String(contentsOf: file, encoding: .utf8) else { continue }
+
+            for rawLine in content.split(separator: "\n", omittingEmptySubsequences: true) {
+                guard let data = rawLine.data(using: .utf8),
+                      let line = try? decoder.decode(ClaudeLine.self, from: data),
+                      let usage = line.message?.usage,
+                      let tsString = line.timestamp,
+                      let timestamp = parseISOTimestamp(tsString),
+                      acc.contains(timestamp) else { continue }
+
+                if let id = line.message?.id {
+                    let key = "\(id)|\(line.requestId ?? "")"
+                    if !seen.insert(key).inserted { continue }
+                }
+
+                let breakdown = TokenBreakdown(
+                    input: usage.inputTokens ?? 0,
+                    output: usage.outputTokens ?? 0,
+                    cacheCreation: usage.cacheCreationInputTokens ?? 0,
+                    cacheRead: usage.cacheReadInputTokens ?? 0
+                )
+                acc.add(breakdown, modelKey: ModelKey(raw: line.message?.model ?? "").id, at: timestamp)
+                acc.addMessage(at: timestamp)
+            }
+        }
+        return acc.finish()
+    }
+}
+
 // MARK: - Transcript line shapes (only the fields we need)
 
 private struct ClaudeLine: Decodable {
