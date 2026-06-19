@@ -71,6 +71,30 @@ struct HeroNumber: View {
     }
 }
 
+/// Thin-line progress ring: faint full track + a status-colored arc whose length
+/// encodes the metric, with the percentage in the centre. Used by the floating HUD.
+struct RingMeter: View {
+    let fraction: Double
+    let level: StatusLevel
+    let percentText: String
+    var size: CGFloat = 48
+    var lineWidth: CGFloat = 3
+    /// Track (unfilled) colour — the floating HUD tints it with the identity colour.
+    var trackColor: Color = AM.track
+    var body: some View {
+        ZStack {
+            Circle().stroke(trackColor, lineWidth: lineWidth)
+            Circle().trim(from: 0, to: max(0, min(1, fraction)))
+                .stroke(statusColor(level), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Text(percentText)
+                .font(.system(size: size * 0.3, weight: .semibold)).monospacedDigit()
+                .foregroundStyle(statusColor(level))
+        }
+        .frame(width: size, height: size)
+    }
+}
+
 /// Tiny segmented toggle, e.g. [5h | 週], for choosing the hero metric.
 struct SegmentedPair: View {
     @Binding var rightSelected: Bool

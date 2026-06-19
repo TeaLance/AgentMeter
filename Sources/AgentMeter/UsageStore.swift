@@ -5,6 +5,8 @@ import AgentMeterCore
 /// Reading happens off the main actor; published values are updated on it.
 @MainActor
 final class UsageStore: ObservableObject {
+    static let shared = UsageStore()
+
     @Published private(set) var claude = ToolUsage(tool: .claudeCode, available: false)
     @Published private(set) var codex = ToolUsage(tool: .codex, available: false)
     @Published private(set) var claudeQuota = ClaudeQuota(available: false)

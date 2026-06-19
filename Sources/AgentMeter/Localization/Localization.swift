@@ -13,6 +13,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 /// whole tree without a restart. Non-View code reads the static snapshot.
 @MainActor
 final class LanguageStore: ObservableObject {
+    static let shared = LanguageStore()
     static let key = "appLanguage"
 
     @Published var language: AppLanguage {

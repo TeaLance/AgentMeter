@@ -5,9 +5,9 @@ import AgentMeterCore
 @main
 struct AgentMeterApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var store = UsageStore()
-    @StateObject private var lang = LanguageStore()
-    @StateObject private var colors = ServiceColorStore()
+    @StateObject private var store = UsageStore.shared
+    @StateObject private var lang = LanguageStore.shared
+    @StateObject private var colors = ServiceColorStore.shared
 
     var body: some Scene {
         MenuBarExtra {
@@ -50,6 +50,7 @@ struct MenuBarLabel: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        FloatingPanelController.shared.refresh()  // restore the HUD if enabled
         // When the app loses focus, drop back to a menu-bar-only app. Resetting the
         // coordinator also clears any window entry whose close we couldn't hook.
         NotificationCenter.default.addObserver(

@@ -8,6 +8,11 @@ enum SettingsKeys {
     static let showCodex = "showCodex"
     /// Which quota the Claude panel shows as its hero number (`ClaudeHero`).
     static let heroMetricClaude = "heroMetricClaude"
+    // Floating desktop HUD.
+    static let floatingEnabled = "floatingEnabled"
+    static let floatingShowClaude = "floatingShowClaude"
+    static let floatingShowCodex = "floatingShowCodex"
+    static let floatingIdleOpacity = "floatingIdleOpacity"
 }
 
 /// The Claude panel's primary "hero" metric. Default 5-hour; the panel's

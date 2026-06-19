@@ -7,6 +7,8 @@ import AgentMeterCore
 /// status stays on the 4-state ramp in `DesignSystem`.
 @MainActor
 final class ServiceColorStore: ObservableObject {
+    static let shared = ServiceColorStore()
+
     enum Key {
         static let claude = "serviceColorClaude"
         static let codex = "serviceColorCodex"

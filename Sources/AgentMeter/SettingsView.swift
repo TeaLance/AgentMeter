@@ -15,6 +15,8 @@ struct SettingsView: View {
                 .tabItem { Label(lang.tr("Appearance", "外觀"), systemImage: "paintpalette") }
             MenuBarSettings()
                 .tabItem { Label(lang.tr("Menu Bar", "選單列"), systemImage: "menubar.rectangle") }
+            FloatingSettings()
+                .tabItem { Label(lang.tr("Floating", "浮動"), systemImage: "macwindow.on.rectangle") }
             BridgeSettings()
                 .tabItem { Label(lang.tr("Claude Quota", "Claude 額度"), systemImage: "bolt.horizontal.circle") }
         }
@@ -152,6 +154,40 @@ private struct MenuBarSettings: View {
                 if isOn { set.insert(metric) } else { set.remove(metric) }
                 metricsCSV = MenuBarMetric.csv(from: set)
             })
+    }
+}
+
+// MARK: - Floating HUD
+
+private struct FloatingSettings: View {
+    @EnvironmentObject private var lang: LanguageStore
+    @AppStorage(SettingsKeys.floatingEnabled) private var enabled = false
+    @AppStorage(SettingsKeys.floatingShowClaude) private var showClaude = true
+    @AppStorage(SettingsKeys.floatingShowCodex) private var showCodex = true
+    @AppStorage(SettingsKeys.floatingIdleOpacity) private var idleOpacity = 0.7
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle(lang.tr("Show floating desktop HUD", "顯示桌面浮動面板"), isOn: $enabled)
+                    .onChange(of: enabled) { _, on in FloatingPanelController.shared.setEnabled(on) }
+            }
+            Section(lang.tr("HUD content", "面板內容")) {
+                Toggle("Claude", isOn: $showClaude)
+                Toggle("Codex", isOn: $showCodex)
+                HStack {
+                    Text(lang.tr("Idle opacity", "閒置透明度"))
+                    Slider(value: $idleOpacity, in: 0.3...1.0)
+                    Text("\(Int(idleOpacity * 100))%").font(.caption).monospacedDigit()
+                        .foregroundStyle(.secondary).frame(width: 36, alignment: .trailing)
+                }
+                Text(lang.tr("Always on top · drag to move · snaps to screen edge · brightens on hover.",
+                             "永遠置頂 · 可拖曳 · 吸附螢幕邊緣 · 滑入變亮。"))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .disabled(!enabled)
+        }
+        .formStyle(.grouped)
     }
 }
 
