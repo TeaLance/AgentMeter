@@ -35,6 +35,7 @@ public struct ClaudeCodeReader: UsageReader {
         var today = TokenBreakdown()
         var rolling = TokenBreakdown()
         var messageCount = 0
+        var todayByModel: [String: TokenBreakdown] = [:]
         var seen = Set<String>()
         // Track the single most-recent assistant turn for the context-window gauge.
         var latestTimestamp: Date?
@@ -70,6 +71,8 @@ public struct ClaudeCodeReader: UsageReader {
                 if windows.isToday(timestamp) {
                     today += breakdown
                     messageCount += 1
+                    let key = ModelKey(raw: line.message?.model ?? "").id
+                    todayByModel[key, default: TokenBreakdown()] += breakdown
                 }
                 if windows.isInRollingWindow(timestamp) {
                     rolling += breakdown
@@ -95,8 +98,8 @@ public struct ClaudeCodeReader: UsageReader {
 
         return ToolUsage(tool: .claudeCode, available: true,
                          today: today, rolling5h: rolling,
-                         messageCount: messageCount, contextWindow: contextWindow,
-                         lastUpdated: now)
+                         messageCount: messageCount, todayByModel: todayByModel,
+                         contextWindow: contextWindow, lastUpdated: now)
     }
 }
 

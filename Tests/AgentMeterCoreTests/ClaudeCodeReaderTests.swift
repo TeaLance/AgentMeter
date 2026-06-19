@@ -59,6 +59,28 @@ final class ClaudeCodeReaderTests: XCTestCase {
         XCTAssertEqual(usage.rolling5h, TokenBreakdown(input: 100, output: 50, cacheCreation: 10, cacheRead: 20))
     }
 
+    func testTodayByModelBucketsByNormalizedKeyAndSumsToToday() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let opus = assistantLine(ts: utc(2026, 6, 14, 1), id: "m1", req: "r1",
+                                 input: 100, output: 50, cc: 10, cr: 20, model: "claude-opus-4-8")
+        // dated snapshot must normalize to the base key "claude-haiku-4-5"
+        let haiku = assistantLine(ts: utc(2026, 6, 14, 1, 10), id: "m2", req: "r2",
+                                  input: 200, output: 100, cc: 0, cr: 0, model: "claude-haiku-4-5-20251001")
+        try writeLines([opus, haiku], to: dir.appendingPathComponent("p/s.jsonl"))
+
+        let usage = try reader(dir).read(now: now)
+
+        XCTAssertEqual(usage.todayByModel["claude-opus-4-8"],
+                       TokenBreakdown(input: 100, output: 50, cacheCreation: 10, cacheRead: 20))
+        XCTAssertEqual(usage.todayByModel["claude-haiku-4-5"],
+                       TokenBreakdown(input: 200, output: 100))
+        // parity: per-model buckets sum to the flat `today` total
+        let summed = usage.todayByModel.values.reduce(TokenBreakdown(), +)
+        XCTAssertEqual(summed, usage.today)
+    }
+
     func testContextWindowFromLatestTurnUses1MForOneMillionModel() throws {
         let dir = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: dir) }

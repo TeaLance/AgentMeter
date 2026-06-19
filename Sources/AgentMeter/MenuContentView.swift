@@ -173,14 +173,25 @@ struct MenuContentView: View {
             HStack(spacing: AM.Space.l) {
                 footerItem(lang.tr("Today", "今日"), "\(u.today.billableTotal.compactTokenString) tokens")
                 footerItem(lang.tr("Messages", "訊息"), "\(u.messageCount)")
+                if !u.todayByModel.isEmpty {
+                    footerItem("", usdString(costEstimate(byModel: u.todayByModel)))
+                }
                 Spacer()
             }
         }
     }
 
     private func footerItem(_ label: String, _ value: String) -> Text {
-        (Text(label + " ").foregroundColor(AM.ink2) + Text(value).foregroundColor(AM.ink).bold())
+        let prefix = label.isEmpty ? Text("") : Text(label + " ").foregroundColor(AM.ink2)
+        return (prefix + Text(value).foregroundColor(AM.ink).bold())
             .font(.system(size: 11.5).monospacedDigit())
+    }
+
+    /// "≈$1.80" — trailing "+" when some tokens came from unpriced models.
+    private func usdString(_ est: CostEstimate) -> String {
+        let amount = est.amountUSD < 0.01 && est.amountUSD > 0
+            ? "<0.01" : String(format: "%.2f", est.amountUSD)
+        return "≈$\(amount)\(est.isComplete ? "" : "+")"
     }
 
     private var noData: some View {
