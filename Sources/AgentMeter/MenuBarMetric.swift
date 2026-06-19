@@ -45,15 +45,15 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
     /// Label shown in the Settings multi-select list.
     var settingsTitle: String {
         switch self {
-        case .claudeTokens:   return "Claude · 今日 tokens"
-        case .claudeFiveHour: return "Claude · 5h 額度 %"
-        case .claudeWeekly:   return "Claude · 週額度 %"
-        case .claudeContext:  return "Claude · Context %"
-        case .claudeMessages: return "Claude · 訊息數"
-        case .codexTokens:    return "Codex · 今日 tokens"
-        case .codexContext:   return "Codex · Context %"
-        case .codexMessages:  return "Codex · 訊息數"
-        case .combinedTokens: return "合計 · 今日 tokens"
+        case .claudeTokens:   return tr("Claude · today tokens", "Claude · 今日 tokens")
+        case .claudeFiveHour: return tr("Claude · 5h limit %", "Claude · 5h 額度 %")
+        case .claudeWeekly:   return tr("Claude · weekly %", "Claude · 週額度 %")
+        case .claudeContext:  return tr("Claude · context %", "Claude · Context %")
+        case .claudeMessages: return tr("Claude · messages", "Claude · 訊息數")
+        case .codexTokens:    return tr("Codex · today tokens", "Codex · 今日 tokens")
+        case .codexContext:   return tr("Codex · context %", "Codex · Context %")
+        case .codexMessages:  return tr("Codex · messages", "Codex · 訊息數")
+        case .combinedTokens: return tr("Combined · today tokens", "合計 · 今日 tokens")
         }
     }
 

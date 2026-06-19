@@ -18,9 +18,14 @@ enum ClaudeHero: String { case fiveHour, weekly }
 let defaultMenuBarMetricsCSV = MenuBarMetric.combinedTokens.rawValue
 
 /// Refresh interval choices, in seconds.
-let refreshIntervalOptions: [(label: String, seconds: Double)] = [
-    ("15 秒", 15),
-    ("30 秒", 30),
-    ("1 分鐘", 60),
-    ("5 分鐘", 300),
-]
+let refreshIntervalSecondsOptions: [Double] = [15, 30, 60, 300]
+
+/// Localized label for a refresh interval (re-evaluated on language change).
+func refreshIntervalLabel(_ seconds: Double) -> String {
+    switch seconds {
+    case 15:  return tr("15 sec", "15 秒")
+    case 30:  return tr("30 sec", "30 秒")
+    case 60:  return tr("1 min", "1 分鐘")
+    default:  return tr("5 min", "5 分鐘")
+    }
+}

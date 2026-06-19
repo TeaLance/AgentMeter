@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import AgentMeterCore
 
 /// Per-service identity colour (used for the menu-bar icon, the swatch, the
@@ -42,4 +43,13 @@ final class ServiceColorStore: ObservableObject {
     private func persist(_ value: String, _ key: String) {
         UserDefaults.standard.set(value, forKey: key)
     }
+}
+
+/// Convert a SwiftUI `Color` (often display-P3 from `ColorPicker`) to a stable
+/// `#RRGGBB` string by pinning to sRGB first — otherwise the round-trip drifts.
+func hexString(from color: Color) -> String {
+    let ns = NSColor(color).usingColorSpace(.sRGB) ?? .gray
+    return HexColor.string(r: Int((ns.redComponent * 255).rounded()),
+                           g: Int((ns.greenComponent * 255).rounded()),
+                           b: Int((ns.blueComponent * 255).rounded()))
 }
