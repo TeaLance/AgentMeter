@@ -50,12 +50,12 @@ struct MenuBarLabel: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        // After the Settings window is dismissed (app loses focus), drop the Dock
-        // icon again so we stay a menu-bar-only app.
+        // When the app loses focus, drop back to a menu-bar-only app. Resetting the
+        // coordinator also clears any window entry whose close we couldn't hook.
         NotificationCenter.default.addObserver(
             forName: NSApplication.willResignActiveNotification, object: nil, queue: .main
         ) { _ in
-            NSApp.setActivationPolicy(.accessory)
+            MainActor.assumeIsolated { ActivationPolicyCoordinator.shared.reset() }
         }
     }
 }

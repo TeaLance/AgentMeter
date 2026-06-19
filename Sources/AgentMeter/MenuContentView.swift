@@ -47,6 +47,7 @@ struct MenuContentView: View {
             HStack(spacing: 2) {
                 if store.isRefreshing { ProgressView().controlSize(.small).scaleEffect(0.7) }
                 iconButton("arrow.clockwise") { store.refreshNow() }
+                iconButton("chart.bar") { StatsWindowController.shared.show(lang: lang, colors: colors) }
                 iconButton("gearshape") { openSettingsWindow() }
                 iconButton("power") { NSApplication.shared.terminate(nil) }
             }
@@ -219,8 +220,7 @@ struct MenuContentView: View {
     }
 
     private func openSettingsWindow() {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        ActivationPolicyCoordinator.shared.enter()
         openSettings()
     }
 }
