@@ -22,7 +22,6 @@ struct SettingsView: View {
             AdvancedSettings()
                 .tabItem { Label(lang.tr("Advanced", "進階"), systemImage: "network") }
         }
-        .frame(width: 440, height: 440)
     }
 }
 
@@ -58,12 +57,23 @@ private struct GeneralSettings: View {
             Section {
                 Toggle(lang.tr("Launch at login", "開機時自動啟動"), isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, on in setLaunchAtLogin(on) }
-                if let loginError {
+                    .disabled(!isInstalledApp)
+                if !isInstalledApp {
+                    Text(lang.tr("Available only when running the installed AgentMeter.app — not via `swift run`.",
+                                 "僅在執行已安裝的 AgentMeter.app 時可用(開發模式 / `swift run` 無法設定)。"))
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if let loginError {
                     Text(loginError).font(.caption).foregroundStyle(.red)
                 }
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// SMAppService.mainApp only works for a bundled, installed .app — not a bare
+    /// `swift run` binary (which fails with "Invalid argument").
+    private var isInstalledApp: Bool {
+        Bundle.main.bundleURL.pathExtension == "app" && Bundle.main.bundleIdentifier != nil
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {

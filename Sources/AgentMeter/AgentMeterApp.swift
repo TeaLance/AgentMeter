@@ -19,13 +19,6 @@ struct AgentMeterApp: App {
             MenuBarLabel(store: store)
         }
         .menuBarExtraStyle(.window)
-
-        Settings {
-            SettingsView()
-                .environmentObject(store)
-                .environmentObject(lang)
-                .environmentObject(colors)
-        }
     }
 }
 

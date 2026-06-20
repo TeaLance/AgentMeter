@@ -150,8 +150,8 @@ struct StatsRootView: View {
         VStack(alignment: .leading, spacing: AM.Space.xl) {
             HStack(spacing: 34) {
                 kpi(lang.tr("Total tokens", "總 tokens"), Int(totalTokens).compactTokenString)
-                kpi(lang.tr("≈ Total cost", "≈ 總花費"), usd(totalCost))
-                kpi("Claude / Codex", "\(usd(cost(.claudeCode))) · \(usd(cost(.codex)))", small: true)
+                kpi(lang.tr("Total cost", "總花費"), moneyString(totalCost))
+                kpi("Claude / Codex", "\(moneyString(cost(.claudeCode))) · \(moneyString(cost(.codex)))", small: true)
             }
             Rectangle().fill(AM.hairline).frame(height: 1)
             sectionHeader(lang.tr("Daily usage", "每日用量"))
@@ -213,7 +213,7 @@ struct StatsRootView: View {
                         Spacer()
                         Text("\(row.tokens.compactTokenString) tokens")
                             .font(.system(size: 11.5)).monospacedDigit().foregroundStyle(AM.ink2)
-                        Text(usd(row.cost)).font(.system(size: 11.5, weight: .medium)).monospacedDigit()
+                        Text(moneyString(row.cost)).font(.system(size: 11.5, weight: .medium)).monospacedDigit()
                             .frame(width: 76, alignment: .trailing)
                     }
                     .padding(.vertical, 7)
@@ -279,8 +279,4 @@ struct StatsRootView: View {
         return rows.sorted { $0.tokens > $1.tokens }
     }
 
-    private func usd(_ est: CostEstimate) -> String {
-        let n = est.amountUSD < 0.01 && est.amountUSD > 0 ? "<0.01" : String(format: "%.2f", est.amountUSD)
-        return "≈$\(n)\(est.isComplete ? "" : "+")"
-    }
 }

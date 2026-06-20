@@ -13,7 +13,6 @@ struct MenuContentView: View {
     @AppStorage(SettingsKeys.showClaude) private var showClaude = true
     @AppStorage(SettingsKeys.showCodex) private var showCodex = true
     @AppStorage(SettingsKeys.heroMetricClaude) private var claudeHeroRaw = ClaudeHero.fiveHour.rawValue
-    @Environment(\.openSettings) private var openSettings
 
     private var claudeHero: ClaudeHero { ClaudeHero(rawValue: claudeHeroRaw) ?? .fiveHour }
 
@@ -47,8 +46,8 @@ struct MenuContentView: View {
             HStack(spacing: 2) {
                 if store.isRefreshing { ProgressView().controlSize(.small).scaleEffect(0.7) }
                 iconButton("arrow.clockwise") { store.refreshNow() }
-                iconButton("chart.bar") { StatsWindowController.shared.show(lang: lang, colors: colors) }
-                iconButton("gearshape") { openSettingsWindow() }
+                iconButton("chart.bar") { StatsWindowController.shared.show(tab: .stats) }
+                iconButton("gearshape") { StatsWindowController.shared.show(tab: .settings) }
                 iconButton("power") { NSApplication.shared.terminate(nil) }
             }
         }
@@ -119,7 +118,7 @@ struct MenuContentView: View {
     }
 
     private var enableQuotaLink: some View {
-        Button { openSettingsWindow() } label: {
+        Button { StatsWindowController.shared.show(tab: .settings) } label: {
             Text(lang.tr("Enable live 5h / weekly quota", "啟用即時 5h／每週額度"))
                 .font(.system(size: 11))
         }
@@ -175,7 +174,7 @@ struct MenuContentView: View {
                 footerItem(lang.tr("Today", "今日"), "\(u.today.billableTotal.compactTokenString) tokens")
                 footerItem(lang.tr("Messages", "訊息"), "\(u.messageCount)")
                 if !u.todayByModel.isEmpty {
-                    footerItem("", usdString(costEstimate(byModel: u.todayByModel)))
+                    footerItem("", moneyString(costEstimate(byModel: u.todayByModel)))
                 }
                 Spacer()
             }
@@ -186,13 +185,6 @@ struct MenuContentView: View {
         let prefix = label.isEmpty ? Text("") : Text(label + " ").foregroundColor(AM.ink2)
         return (prefix + Text(value).foregroundColor(AM.ink).bold())
             .font(.system(size: 11.5).monospacedDigit())
-    }
-
-    /// "≈$1.80" — trailing "+" when some tokens came from unpriced models.
-    private func usdString(_ est: CostEstimate) -> String {
-        let amount = est.amountUSD < 0.01 && est.amountUSD > 0
-            ? "<0.01" : String(format: "%.2f", est.amountUSD)
-        return "≈$\(amount)\(est.isComplete ? "" : "+")"
     }
 
     private var noData: some View {
@@ -219,8 +211,4 @@ struct MenuContentView: View {
         return lang.tr("updated \(ago) ago", "\(ago)前已更新")
     }
 
-    private func openSettingsWindow() {
-        ActivationPolicyCoordinator.shared.enter()
-        openSettings()
-    }
 }

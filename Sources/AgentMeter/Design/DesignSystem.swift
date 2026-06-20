@@ -38,6 +38,12 @@ func statusColor(forUsed percent: Double) -> Color {
     statusColor(.forUsed(percent: percent))
 }
 
+/// Plain money string — no `≈`, no `+`. `$X.XX` when priced; `—` when the cost is
+/// entirely unknown (unpriced models), so we never show a misleading `$0.00`.
+func moneyString(_ est: CostEstimate) -> String {
+    (!est.isComplete && est.amountUSD == 0) ? "—" : "$" + String(format: "%.2f", est.amountUSD)
+}
+
 extension Color {
     /// Adaptive sRGB colour from two `#RRGGBB` strings (light / dark appearance).
     init(amLight light: String, dark: String) {
