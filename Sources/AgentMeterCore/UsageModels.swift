@@ -121,6 +121,9 @@ public struct ToolUsage: Equatable, Sendable {
     public var today: TokenBreakdown
     public var rolling5h: TokenBreakdown
     public var messageCount: Int
+    /// Today's tokens split by normalized model key (`ModelKey.id`), used for a
+    /// per-model local cost estimate. Empty when the reader can't attribute models.
+    public var todayByModel: [String: TokenBreakdown]
     /// Fullness of the most-recent session's context window, if known.
     public var contextWindow: ContextWindow?
     public var lastUpdated: Date
@@ -130,6 +133,7 @@ public struct ToolUsage: Equatable, Sendable {
                 today: TokenBreakdown = .init(),
                 rolling5h: TokenBreakdown = .init(),
                 messageCount: Int = 0,
+                todayByModel: [String: TokenBreakdown] = [:],
                 contextWindow: ContextWindow? = nil,
                 lastUpdated: Date = Date(timeIntervalSince1970: 0)) {
         self.tool = tool
@@ -137,6 +141,7 @@ public struct ToolUsage: Equatable, Sendable {
         self.today = today
         self.rolling5h = rolling5h
         self.messageCount = messageCount
+        self.todayByModel = todayByModel
         self.contextWindow = contextWindow
         self.lastUpdated = lastUpdated
     }

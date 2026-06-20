@@ -39,7 +39,13 @@ brew install --cask TeaLance/tap/agentmeter
 
 ## 隱私
 
-只**讀取**本機 `~/.claude` 與 `~/.codex` 的檔案來統計用量，**不連網、不讀 Keychain、不傳送任何資料**。
+用量統計只讀取本機 `~/.claude` 與 `~/.codex` 的紀錄,**不讀 Keychain、不傳送任何資料給第三方**。
+
+為了顯示登入帳號與真實額度,預設會做兩件事(都可在**設定 → 進階**關閉):
+- **顯示登入帳號**：讀取本機登入憑證「檔案」(**不讀 Keychain**)解出 email/方案;不連網。
+- **Codex 即時額度**：用本機憑證的權杖連線 OpenAI 取得真實 5h／每週額度。
+
+關閉以上兩項後即**完全離線**。網路碼僅限於 `Sources/AgentMeter/Network/`(有 CI `Scripts/check-offline.sh` 把關)。
 
 ## 授權
 

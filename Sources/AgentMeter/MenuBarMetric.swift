@@ -10,6 +10,8 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
     case claudeContext
     case claudeMessages
     case codexTokens
+    case codexFiveHour
+    case codexWeekly
     case codexContext
     case codexMessages
     case combinedTokens
@@ -26,8 +28,8 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
         case .claudeTokens, .codexTokens, .combinedTokens: return .token
         case .claudeContext, .codexContext:                return .context
         case .claudeMessages, .codexMessages:              return .messages
-        case .claudeFiveHour:                              return .fiveHour
-        case .claudeWeekly:                                return .weekly
+        case .claudeFiveHour, .codexFiveHour:              return .fiveHour
+        case .claudeWeekly, .codexWeekly:                  return .weekly
         }
     }
 
@@ -35,66 +37,70 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
         switch self {
         case .claudeTokens, .claudeFiveHour, .claudeWeekly, .claudeContext, .claudeMessages:
             return .claude
-        case .codexTokens, .codexContext, .codexMessages:
+        case .codexTokens, .codexFiveHour, .codexWeekly, .codexContext, .codexMessages:
             return .codex
         case .combinedTokens:
             return .combined
         }
     }
 
+    /// The service whose logo precedes this cell in the menu bar (nil for combined).
+    var agentTool: AgentTool? {
+        switch tool {
+        case .claude:   return .claudeCode
+        case .codex:    return .codex
+        case .combined: return nil
+        }
+    }
+
     /// Label shown in the Settings multi-select list.
     var settingsTitle: String {
         switch self {
-        case .claudeTokens:   return "Claude · 今日 tokens"
-        case .claudeFiveHour: return "Claude · 5h 額度 %"
-        case .claudeWeekly:   return "Claude · 週額度 %"
-        case .claudeContext:  return "Claude · Context %"
-        case .claudeMessages: return "Claude · 訊息數"
-        case .codexTokens:    return "Codex · 今日 tokens"
-        case .codexContext:   return "Codex · Context %"
-        case .codexMessages:  return "Codex · 訊息數"
-        case .combinedTokens: return "合計 · 今日 tokens"
+        case .claudeTokens:   return tr("Claude · today tokens", "Claude · 今日 tokens")
+        case .claudeFiveHour: return tr("Claude · 5h limit %", "Claude · 5h 額度 %")
+        case .claudeWeekly:   return tr("Claude · weekly %", "Claude · 週額度 %")
+        case .claudeContext:  return tr("Claude · context %", "Claude · Context %")
+        case .claudeMessages: return tr("Claude · messages", "Claude · 訊息數")
+        case .codexTokens:    return tr("Codex · today tokens", "Codex · 今日 tokens")
+        case .codexFiveHour:  return tr("Codex · 5h limit %", "Codex · 5h 額度 %")
+        case .codexWeekly:    return tr("Codex · weekly %", "Codex · 週額度 %")
+        case .codexContext:   return tr("Codex · context %", "Codex · Context %")
+        case .codexMessages:  return tr("Codex · messages", "Codex · 訊息數")
+        case .combinedTokens: return tr("Combined · today tokens", "合計 · 今日 tokens")
         }
     }
 
-    /// Short tool prefix used only when the same kind spans both tools.
-    private var toolPrefix: String {
-        switch tool {
-        case .claude:   return "CC"
-        case .codex:    return "CX"
-        case .combined: return "Σ"
-        }
-    }
-
-    /// The metric's display value, or nil when there's no data to show.
+    /// A menu-bar cell rendered as two stacked lines: a short label on top and the
+    /// value below (Stats-app style). `label` is the kind tag ("5h"/"ctx"/…) or
+    /// empty for token counts (where the tool tag is the top line).
     @MainActor
-    func value(_ store: UsageStore) -> String? {
+    func parts(_ store: UsageStore) -> (label: String, value: String)? {
+        // Honor the used/remaining display setting for percentage metrics.
+        let remaining = UserDefaults.standard.bool(forKey: SettingsKeys.meterShowsRemaining)
+        func pct(_ used: Double) -> String { "\(Int((remaining ? max(0, 100 - used) : used).rounded()))%" }
+
         switch self {
-        case .claudeTokens:
-            return tokenString(store.claude)
-        case .codexTokens:
-            return tokenString(store.codex)
+        case .claudeTokens:   return tokenString(store.claude).map { ("", $0) }
+        case .codexTokens:    return tokenString(store.codex).map { ("", $0) }
         case .combinedTokens:
-            let total = store.combinedTodayBillable
-            return total > 0 ? total.compactTokenString : nil
-        case .claudeFiveHour:
-            return store.claudeQuota.fiveHour.map { "5h \(percent($0.usedPercent))%" }
-        case .claudeWeekly:
-            return store.claudeQuota.weekly.map { "7d \(percent($0.usedPercent))%" }
+            let total = store.combinedTodayTotal
+            return total > 0 ? ("", total.compactTokenString) : nil
+        case .claudeFiveHour: return store.claudeQuota.fiveHour.map { ("5h", pct($0.usedPercent)) }
+        case .claudeWeekly:   return store.claudeQuota.weekly.map { ("7d", pct($0.usedPercent)) }
+        case .codexFiveHour:  return store.codexFiveHour.map { ("5h", pct($0.usedPercent)) }
+        case .codexWeekly:    return store.codexWeekly.map { ("7d", pct($0.usedPercent)) }
         case .claudeContext:
             let cw = store.claudeQuota.contextWindow ?? store.claude.contextWindow
-            return cw.map { "ctx \(Int(($0.fraction * 100).rounded()))%" }
+            return cw.map { ("ctx", pct($0.fraction * 100)) }
         case .codexContext:
-            return store.codex.contextWindow.map { "ctx \(Int(($0.fraction * 100).rounded()))%" }
-        case .claudeMessages:
-            return messageString(store.claude)
-        case .codexMessages:
-            return messageString(store.codex)
+            return store.codex.contextWindow.map { ("ctx", pct($0.fraction * 100)) }
+        case .claudeMessages: return messageString(store.claude).map { ("msg", $0) }
+        case .codexMessages:  return messageString(store.codex).map { ("msg", $0) }
         }
     }
 
     private func tokenString(_ usage: ToolUsage) -> String? {
-        let total = usage.today.billableTotal
+        let total = usage.today.total
         return (usage.available && total > 0) ? total.compactTokenString : nil
     }
 
@@ -102,25 +108,21 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
         (usage.available && usage.messageCount > 0) ? "\(usage.messageCount)" : nil
     }
 
-    private func percent(_ p: Double) -> Int { Int(p.rounded()) }
+    // MARK: - Cell rendering
 
-    // MARK: - Bar rendering
-
-    /// Build the inline menu-bar string for the selected metrics (data-less ones hidden).
+    /// Build (tool, top, bottom) cells for the selected metrics; data-less ones are
+    /// hidden. The per-service logo identifies Claude vs Codex, so no text prefix is
+    /// added; token cells (which have no kind label) carry "Σ" only for the combined
+    /// total, which has no logo of its own.
     @MainActor
-    static func barString(_ selected: [MenuBarMetric], store: UsageStore) -> String {
-        // A kind needs tool prefixes only when more than one tool's metric of that
-        // kind is selected (e.g. Claude tokens AND Codex tokens).
-        var toolsByKind: [Kind: Set<Tool>] = [:]
-        for m in selected { toolsByKind[m.kind, default: []].insert(m.tool) }
-
-        var parts: [String] = []
-        for metric in selected {
-            guard let value = metric.value(store) else { continue }
-            let needsPrefix = (toolsByKind[metric.kind]?.count ?? 0) > 1
-            parts.append(needsPrefix ? "\(metric.toolPrefix) \(value)" : value)
+    static func cells(_ selected: [MenuBarMetric], store: UsageStore) -> [(tool: AgentTool?, top: String, bottom: String)] {
+        var out: [(AgentTool?, String, String)] = []
+        for m in selected {
+            guard let pv = m.parts(store) else { continue }
+            let top = pv.label.isEmpty ? (m.tool == .combined ? "Σ" : "") : pv.label
+            out.append((m.agentTool, top, pv.value))
         }
-        return parts.joined(separator: "  ")
+        return out
     }
 
     // MARK: - Persistence

@@ -85,6 +85,52 @@ public struct CodexReader: UsageReader {
     }
 }
 
+extension CodexReader {
+    /// Per-day, per-model usage over `range`. `token_count` lines carry no model,
+    /// so we track the latest `turn_context.model` *within each file* and attribute
+    /// following deltas to it (`.unknown` if none seen yet). Files are processed
+    /// independently and lines kept in file order — never globally sorted.
+    public func history(range: DateInterval) throws -> UsageHistory {
+        var acc = HistoryAccumulator(tool: .codex, range: range, calendar: calendar)
+        guard directoryExists(sessionsDirectory) else { return acc.finish() }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+        for file in jsonlFiles(in: sessionsDirectory) {
+            if modificationDate(of: file) < range.start { continue }
+            guard let content = try? String(contentsOf: file, encoding: .utf8) else { continue }
+
+            var currentModel = ModelKey.unknown.id   // reset per file
+            for rawLine in content.split(separator: "\n", omittingEmptySubsequences: true) {
+                guard let data = rawLine.data(using: .utf8),
+                      let line = try? decoder.decode(CodexLine.self, from: data) else { continue }
+                let kind = line.payload?.type ?? line.type
+
+                if kind == "turn_context", let m = line.payload?.model {
+                    currentModel = ModelKey(raw: m).id
+                    continue
+                }
+
+                guard let tsString = line.timestamp,
+                      let timestamp = parseISOTimestamp(tsString),
+                      acc.contains(timestamp) else { continue }
+
+                switch kind {
+                case "token_count":
+                    guard let delta = line.payload?.info?.lastTokenUsage else { continue }
+                    acc.add(delta.breakdown, modelKey: currentModel, at: timestamp)
+                case "agent_message":
+                    acc.addMessage(at: timestamp)
+                default:
+                    continue
+                }
+            }
+        }
+        return acc.finish()
+    }
+}
+
 // MARK: - Rollout line shapes (only the fields we need)
 
 private struct CodexLine: Decodable {
@@ -96,6 +142,8 @@ private struct CodexLine: Decodable {
 private struct CodexPayload: Decodable {
     let type: String?
     let info: CodexInfo?
+    /// Present on `turn_context` lines — the model in use for the turns that follow.
+    let model: String?
 }
 
 private struct CodexInfo: Decodable {
