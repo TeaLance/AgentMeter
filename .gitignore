@@ -6,3 +6,5 @@ dist/
 AgentMeter.app/
 # Original drop-in icon artwork; the committed source lives in Resources/AppIcon.png
 AgentMeter_icon*.jpg
+
+.claude/
