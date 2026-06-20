@@ -24,12 +24,6 @@ struct RootTabView: View {
             FloatingSettings()
                 .tabItem { Label(lang.tr("Floating", "浮動"), systemImage: "macwindow.on.rectangle") }
                 .tag(AppTab.floating)
-            BridgeSettings()
-                .tabItem { Label(lang.tr("Claude Quota", "Claude 額度"), systemImage: "bolt.horizontal.circle") }
-                .tag(AppTab.bridge)
-            AdvancedSettings()
-                .tabItem { Label(lang.tr("Advanced", "進階"), systemImage: "network") }
-                .tag(AppTab.advanced)
         }
         .background(AM.paper)
     }
@@ -42,8 +36,15 @@ private struct GeneralSettings: View {
     @EnvironmentObject private var lang: LanguageStore
     @EnvironmentObject private var colors: ServiceColorStore
     @AppStorage(SettingsKeys.interval) private var interval: Double = 30
-    @AppStorage(SettingsKeys.heroMetricClaude) private var claudeHeroRaw = ClaudeHero.fiveHour.rawValue
     @AppStorage(SettingsKeys.meterShowsRemaining) private var meterShowsRemaining = false
+    // Live quota / connectivity (default on).
+    @AppStorage(SettingsKeys.netCodexQuota) private var codexQuota = true
+    @AppStorage(SettingsKeys.showAccounts) private var showAccounts = true
+    @State private var pending: NetworkFeature?
+    // Claude live quota via the statusLine bridge (local, no network).
+    @State private var bridgeState = StatusLineBridge.shared.state()
+    @State private var bridgeError: String?
+    // Launch at login.
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
 
@@ -66,30 +67,98 @@ private struct GeneralSettings: View {
             }
             .onChange(of: interval) { _, v in store.setInterval(v) }
 
-            Picker(lang.tr("Claude hero metric", "Claude 英雄指標"), selection: $claudeHeroRaw) {
-                Text(lang.tr("5-hour", "5 小時額度")).tag(ClaudeHero.fiveHour.rawValue)
-                Text(lang.tr("Weekly", "每週額度")).tag(ClaudeHero.weekly.rawValue)
-            }
-
             Picker(lang.tr("Meters show", "量表顯示"), selection: $meterShowsRemaining) {
                 Text(lang.tr("Used", "已使用")).tag(false)
                 Text(lang.tr("Remaining", "剩餘")).tag(true)
+            }
+
+            Section(lang.tr("Live quota & connectivity", "即時額度與連線")) {
+                featureToggle(.showAccounts)
+                claudeLiveQuotaRow
+                featureToggle(.codexQuota)
             }
 
             Section {
                 Toggle(lang.tr("Launch at login", "開機時自動啟動"), isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, on in setLaunchAtLogin(on) }
                     .disabled(!isInstalledApp)
-                if !isInstalledApp {
-                    Text(lang.tr("Available only when running the installed AgentMeter.app — not via `swift run`.",
-                                 "僅在執行已安裝的 AgentMeter.app 時可用(開發模式 / `swift run` 無法設定)。"))
-                        .font(.caption).foregroundStyle(.secondary)
-                } else if let loginError {
+                if isInstalledApp, let loginError {
                     Text(loginError).font(.caption).foregroundStyle(.red)
                 }
             }
         }
         .formStyle(.grouped)
+        .alert(pending?.title ?? "",
+               isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
+               presenting: pending) { feature in
+            Button(lang.tr("Cancel", "取消"), role: .cancel) {}
+            Button(lang.tr("Enable", "啟用")) {
+                binding(for: feature).wrappedValue = true
+                UsageStore.shared.refreshNow()   // pick up the new data immediately
+            }
+        } message: { feature in
+            Text(feature.explanation)
+        }
+    }
+
+    // Claude live quota: same row shape as the network toggles, but it reads the
+    // local statusLine data Claude Code writes (no network), so its badge says so.
+    @ViewBuilder private var claudeLiveQuotaRow: some View {
+        Toggle(isOn: Binding(get: { bridgeState == .enabled }, set: { setBridge($0) })) {
+            HStack(spacing: 6) {
+                Text(lang.tr("Claude live quota", "Claude 即時額度"))
+                badge(lang.tr("reads local data", "讀本機資料"), network: false)
+            }
+        }
+        if bridgeState == .conflict {
+            Text(lang.tr("Detected an existing custom statusLine, so it wasn't enabled (to avoid overwriting). Remove the existing one first.",
+                         "偵測到你已有自訂 statusLine，為避免覆蓋而未啟用。請先移除既有設定。"))
+                .font(.caption).foregroundStyle(.secondary)
+        } else if let bridgeError {
+            Text(bridgeError).font(.caption).foregroundStyle(.red)
+        }
+    }
+
+    private func badge(_ text: String, network: Bool) -> some View {
+        Text(text)
+            .font(.system(size: 9.5, weight: .semibold))
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background((network ? Color.orange : Color.secondary).opacity(0.18), in: Capsule())
+            .foregroundStyle(network ? .orange : .secondary)
+    }
+
+    private func featureToggle(_ feature: NetworkFeature) -> some View {
+        Toggle(isOn: Binding(
+            get: { binding(for: feature).wrappedValue },
+            set: { newValue in
+                if newValue { pending = feature }      // confirm before enabling
+                else { binding(for: feature).wrappedValue = false; UsageStore.shared.refreshNow() }
+            })) {
+            HStack(spacing: 6) {
+                Text(feature.title)
+                badge(feature.usesNetwork ? lang.tr("needs internet", "需連網")
+                                          : lang.tr("reads credentials", "讀本機憑證"),
+                      network: feature.usesNetwork)
+            }
+        }
+    }
+
+    private func binding(for feature: NetworkFeature) -> Binding<Bool> {
+        switch feature {
+        case .codexQuota:   return $codexQuota
+        case .showAccounts: return $showAccounts
+        }
+    }
+
+    private func setBridge(_ enabled: Bool) {
+        do {
+            if enabled { try StatusLineBridge.shared.enable() }
+            else { try StatusLineBridge.shared.disable() }
+            bridgeError = nil
+        } catch {
+            bridgeError = error.localizedDescription
+        }
+        bridgeState = StatusLineBridge.shared.state()
     }
 
     private func accountRow(_ name: String, provider: String, tool: AgentTool,
@@ -151,14 +220,6 @@ private struct AppearanceSettings: View {
                          presets: [ServiceColorStore.claudeBrand, ServiceColorStore.mono])
                 colorRow("Codex", tool: .codex,
                          presets: [ServiceColorStore.codexBrand, ServiceColorStore.mono])
-                Text(lang.tr("Used for the menu-bar icon, swatch, and floating ring. Meter colors follow remaining quota, not this.",
-                             "用於選單列 icon、色點與浮動環。量表顏色依剩餘額度，不受此影響。"))
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section {
-                Text(lang.tr("Cost is a local estimate (prices as of \(PricingTable.version)).",
-                             "花費為本機估算（定價版本 \(PricingTable.version)）。"))
-                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -189,16 +250,32 @@ private struct MenuBarSettings: View {
     @AppStorage(SettingsKeys.menuBarMetrics) private var metricsCSV = defaultMenuBarMetricsCSV
     @AppStorage(SettingsKeys.showClaude) private var showClaude = true
     @AppStorage(SettingsKeys.showCodex) private var showCodex = true
+    @AppStorage(SettingsKeys.menuBarOrientation) private var orientation = "vertical"
+    @AppStorage(SettingsKeys.menuBarShowIcon) private var showIcon = true
+
+    private let claudeMetrics: [MenuBarMetric] =
+        [.claudeTokens, .claudeFiveHour, .claudeWeekly, .claudeContext, .claudeMessages]
+    private let codexMetrics: [MenuBarMetric] =
+        [.codexTokens, .codexFiveHour, .codexWeekly, .codexContext, .codexMessages]
 
     var body: some View {
         Form {
-            Section(lang.tr("Menu-bar metrics (multi-select)", "選單列顯示內容（可多選）")) {
-                ForEach(MenuBarMetric.allCases) { metric in
-                    Toggle(metric.settingsTitle, isOn: metricBinding(metric))
+            Section(lang.tr("Claude metrics", "Claude 指標")) {
+                ForEach(claudeMetrics) { Toggle($0.settingsTitle, isOn: metricBinding($0)) }
+            }
+            Section(lang.tr("Codex metrics", "Codex 指標")) {
+                ForEach(codexMetrics) { Toggle($0.settingsTitle, isOn: metricBinding($0)) }
+            }
+            Section(lang.tr("Combined", "合計")) {
+                Toggle(MenuBarMetric.combinedTokens.settingsTitle,
+                       isOn: metricBinding(.combinedTokens))
+            }
+            Section(lang.tr("Layout", "排列方式")) {
+                Picker(lang.tr("Label & value", "標籤與數值"), selection: $orientation) {
+                    Text(lang.tr("Stacked (label above)", "直向（上下）")).tag("vertical")
+                    Text(lang.tr("Inline (side by side)", "橫向（並排）")).tag("horizontal")
                 }
-                Text(lang.tr("Metrics with no data are hidden; a small icon shows when all are hidden.",
-                             "沒資料的項目會自動隱藏；全部隱藏時顯示一個小圖示。"))
-                    .font(.caption).foregroundStyle(.secondary)
+                Toggle(lang.tr("Show agent icon", "顯示 agent 圖示"), isOn: $showIcon)
             }
             Section(lang.tr("Dropdown panel", "下拉面板")) {
                 Toggle(lang.tr("Show Claude Code", "顯示 Claude Code"), isOn: $showClaude)
@@ -243,119 +320,9 @@ private struct FloatingSettings: View {
                     Text("\(Int(idleOpacity * 100))%").font(.caption).monospacedDigit()
                         .foregroundStyle(.secondary).frame(width: 36, alignment: .trailing)
                 }
-                Text(lang.tr("Always on top · drag to move · snaps to screen edge · brightens on hover.",
-                             "永遠置頂 · 可拖曳 · 吸附螢幕邊緣 · 滑入變亮。"))
-                    .font(.caption).foregroundStyle(.secondary)
             }
             .disabled(!enabled)
         }
         .formStyle(.grouped)
-    }
-}
-
-// MARK: - Advanced (network opt-in)
-
-private struct AdvancedSettings: View {
-    @EnvironmentObject private var lang: LanguageStore
-    @AppStorage(SettingsKeys.netCodexQuota) private var codexQuota = true
-    @AppStorage(SettingsKeys.showAccounts) private var showAccounts = true
-    @State private var pending: NetworkFeature?
-
-    var body: some View {
-        Form {
-            Section(lang.tr("Connectivity", "連線")) {
-                featureToggle(.showAccounts)
-                featureToggle(.codexQuota)
-            }
-        }
-        .formStyle(.grouped)
-        .alert(pending?.title ?? "",
-               isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
-               presenting: pending) { feature in
-            Button(lang.tr("Cancel", "取消"), role: .cancel) {}
-            Button(lang.tr("Enable", "啟用")) {
-                binding(for: feature).wrappedValue = true
-                UsageStore.shared.refreshNow()   // pick up the new data immediately
-            }
-        } message: { feature in
-            Text(feature.explanation)
-        }
-    }
-
-    private func featureToggle(_ feature: NetworkFeature) -> some View {
-        Toggle(isOn: Binding(
-            get: { binding(for: feature).wrappedValue },
-            set: { newValue in
-                if newValue { pending = feature }      // confirm before enabling
-                else { binding(for: feature).wrappedValue = false; UsageStore.shared.refreshNow() }
-            })) {
-            HStack(spacing: 6) {
-                Text(feature.title)
-                Text(feature.usesNetwork ? lang.tr("needs internet", "需連網")
-                                         : lang.tr("reads credentials", "讀本機憑證"))
-                    .font(.system(size: 9.5, weight: .semibold))
-                    .padding(.horizontal, 5).padding(.vertical, 1)
-                    .background((feature.usesNetwork ? Color.orange : Color.secondary).opacity(0.18), in: Capsule())
-                    .foregroundStyle(feature.usesNetwork ? .orange : .secondary)
-            }
-        }
-    }
-
-    private func binding(for feature: NetworkFeature) -> Binding<Bool> {
-        switch feature {
-        case .codexQuota:   return $codexQuota
-        case .showAccounts: return $showAccounts
-        }
-    }
-}
-
-// MARK: - Claude quota bridge
-
-private struct BridgeSettings: View {
-    @EnvironmentObject private var lang: LanguageStore
-    @State private var bridgeState = StatusLineBridge.shared.state()
-    @State private var bridgeError: String?
-
-    var body: some View {
-        Form {
-            Section(lang.tr("Live quota (Claude, experimental)", "即時額度（Claude，實驗性）")) {
-                Toggle(lang.tr("Enable live quota (statusLine bridge)", "啟用即時額度（statusLine 橋接）"),
-                       isOn: bridgeBinding)
-                Text(bridgeHelpText).font(.caption).foregroundStyle(.secondary)
-                if let bridgeError {
-                    Text(bridgeError).font(.caption).foregroundStyle(.red)
-                }
-            }
-        }
-        .formStyle(.grouped)
-    }
-
-    private var bridgeBinding: Binding<Bool> {
-        Binding(get: { bridgeState == .enabled }, set: { setBridge($0) })
-    }
-
-    private var bridgeHelpText: String {
-        switch bridgeState {
-        case .enabled:
-            return lang.tr("Enabled. Send one message in Claude Code for the 5h/weekly bars to appear. Sets statusLine in ~/.claude/settings.json (original backed up).",
-                           "已啟用。請在 Claude Code 送出一次訊息，5h／每週額度條才會出現。會在 ~/.claude/settings.json 設定 statusLine（已備份原檔）。")
-        case .conflict:
-            return lang.tr("Detected an existing custom statusLine, so it wasn't enabled (to avoid overwriting). Integrate manually or remove the existing one first.",
-                           "偵測到你已有自訂 statusLine，為避免覆蓋而未啟用。可手動整合或先移除既有設定。")
-        case .disabled:
-            return lang.tr("When on, reads the official data Claude Code passes to statusLine to show real 5h/weekly %. No network, no Keychain.",
-                           "啟用後會讀取 Claude Code 傳給 statusLine 的官方資料來顯示真實 5h／每週 %。不連網、不讀 Keychain。")
-        }
-    }
-
-    private func setBridge(_ enabled: Bool) {
-        do {
-            if enabled { try StatusLineBridge.shared.enable() }
-            else { try StatusLineBridge.shared.disable() }
-            bridgeError = nil
-        } catch {
-            bridgeError = error.localizedDescription
-        }
-        bridgeState = StatusLineBridge.shared.state()
     }
 }

@@ -124,7 +124,7 @@ struct MenuContentView: View {
     }
 
     private var enableQuotaLink: some View {
-        Button { StatsWindowController.shared.show(tab: .advanced) } label: {
+        Button { StatsWindowController.shared.show(tab: .general) } label: {
             Text(lang.tr("Enable live 5h / weekly quota", "啟用即時 5h／每週額度"))
                 .font(.system(size: 11))
         }
@@ -166,7 +166,7 @@ struct MenuContentView: View {
                 heroFromPercent(ctxPct, label: lang.tr("context", "Context"))
                 ThinBar(fraction: dispFrac(ctxPct), level: .forUsed(percent: ctxPct))
                 if !NetworkFeature.codexQuota.isEnabled {
-                    Button { StatsWindowController.shared.show(tab: .advanced) } label: {
+                    Button { StatsWindowController.shared.show(tab: .general) } label: {
                         Text(lang.tr("Enable live quota (needs internet)", "啟用即時額度(需連網)"))
                             .font(.system(size: 11))
                     }

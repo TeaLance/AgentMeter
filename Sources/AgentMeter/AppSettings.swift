@@ -10,6 +10,10 @@ enum SettingsKeys {
     static let heroMetricClaude = "heroMetricClaude"
     /// Meters show remaining (true) vs used (false) percentage.
     static let meterShowsRemaining = "meterShowsRemaining"
+    /// Menu-bar cell layout: "vertical" (stacked) or "horizontal" (inline).
+    static let menuBarOrientation = "menuBarOrientation"
+    /// Whether each service group shows its agent logo in the menu bar.
+    static let menuBarShowIcon = "menuBarShowIcon"
     // Floating desktop HUD.
     static let floatingEnabled = "floatingEnabled"
     static let floatingShowClaude = "floatingShowClaude"

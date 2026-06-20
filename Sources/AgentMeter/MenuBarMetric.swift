@@ -10,6 +10,8 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
     case claudeContext
     case claudeMessages
     case codexTokens
+    case codexFiveHour
+    case codexWeekly
     case codexContext
     case codexMessages
     case combinedTokens
@@ -26,8 +28,8 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
         case .claudeTokens, .codexTokens, .combinedTokens: return .token
         case .claudeContext, .codexContext:                return .context
         case .claudeMessages, .codexMessages:              return .messages
-        case .claudeFiveHour:                              return .fiveHour
-        case .claudeWeekly:                                return .weekly
+        case .claudeFiveHour, .codexFiveHour:              return .fiveHour
+        case .claudeWeekly, .codexWeekly:                  return .weekly
         }
     }
 
@@ -35,10 +37,19 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
         switch self {
         case .claudeTokens, .claudeFiveHour, .claudeWeekly, .claudeContext, .claudeMessages:
             return .claude
-        case .codexTokens, .codexContext, .codexMessages:
+        case .codexTokens, .codexFiveHour, .codexWeekly, .codexContext, .codexMessages:
             return .codex
         case .combinedTokens:
             return .combined
+        }
+    }
+
+    /// The service whose logo precedes this cell in the menu bar (nil for combined).
+    var agentTool: AgentTool? {
+        switch tool {
+        case .claude:   return .claudeCode
+        case .codex:    return .codex
+        case .combined: return nil
         }
     }
 
@@ -51,18 +62,11 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
         case .claudeContext:  return tr("Claude · context %", "Claude · Context %")
         case .claudeMessages: return tr("Claude · messages", "Claude · 訊息數")
         case .codexTokens:    return tr("Codex · today tokens", "Codex · 今日 tokens")
+        case .codexFiveHour:  return tr("Codex · 5h limit %", "Codex · 5h 額度 %")
+        case .codexWeekly:    return tr("Codex · weekly %", "Codex · 週額度 %")
         case .codexContext:   return tr("Codex · context %", "Codex · Context %")
         case .codexMessages:  return tr("Codex · messages", "Codex · 訊息數")
         case .combinedTokens: return tr("Combined · today tokens", "合計 · 今日 tokens")
-        }
-    }
-
-    /// Short tool prefix used only when the same kind spans both tools.
-    private var toolPrefix: String {
-        switch tool {
-        case .claude:   return "CC"
-        case .codex:    return "CX"
-        case .combined: return "Σ"
         }
     }
 
@@ -83,6 +87,8 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
             return total > 0 ? ("", total.compactTokenString) : nil
         case .claudeFiveHour: return store.claudeQuota.fiveHour.map { ("5h", pct($0.usedPercent)) }
         case .claudeWeekly:   return store.claudeQuota.weekly.map { ("7d", pct($0.usedPercent)) }
+        case .codexFiveHour:  return store.codexFiveHour.map { ("5h", pct($0.usedPercent)) }
+        case .codexWeekly:    return store.codexWeekly.map { ("7d", pct($0.usedPercent)) }
         case .claudeContext:
             let cw = store.claudeQuota.contextWindow ?? store.claude.contextWindow
             return cw.map { ("ctx", pct($0.fraction * 100)) }
@@ -104,25 +110,17 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
 
     // MARK: - Cell rendering
 
-    /// Build stacked (top, bottom) cells for the selected metrics; data-less ones
-    /// are hidden. Tool prefix is added to the top line only when the same kind
-    /// spans both tools (so they can be told apart).
+    /// Build (tool, top, bottom) cells for the selected metrics; data-less ones are
+    /// hidden. The per-service logo identifies Claude vs Codex, so no text prefix is
+    /// added; token cells (which have no kind label) carry "Σ" only for the combined
+    /// total, which has no logo of its own.
     @MainActor
-    static func cells(_ selected: [MenuBarMetric], store: UsageStore) -> [(top: String, bottom: String)] {
-        var toolsByKind: [Kind: Set<Tool>] = [:]
-        for m in selected { toolsByKind[m.kind, default: []].insert(m.tool) }
-
-        var out: [(String, String)] = []
+    static func cells(_ selected: [MenuBarMetric], store: UsageStore) -> [(tool: AgentTool?, top: String, bottom: String)] {
+        var out: [(AgentTool?, String, String)] = []
         for m in selected {
             guard let pv = m.parts(store) else { continue }
-            let needsPrefix = (toolsByKind[m.kind]?.count ?? 0) > 1
-            let top: String
-            if pv.label.isEmpty {
-                top = m.toolPrefix                                   // tokens: tool tag identifies it
-            } else {
-                top = needsPrefix ? "\(m.toolPrefix) \(pv.label)" : pv.label
-            }
-            out.append((top, pv.value))
+            let top = pv.label.isEmpty ? (m.tool == .combined ? "Σ" : "") : pv.label
+            out.append((m.agentTool, top, pv.value))
         }
         return out
     }
