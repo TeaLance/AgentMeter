@@ -13,6 +13,9 @@ enum SettingsKeys {
     static let floatingShowClaude = "floatingShowClaude"
     static let floatingShowCodex = "floatingShowCodex"
     static let floatingIdleOpacity = "floatingIdleOpacity"
+    // Network opt-in (default OFF; each gated behind a confirmation).
+    static let netCodexQuota = "netCodexQuota"
+    static let netAccurateCost = "netAccurateCost"
 }
 
 /// The Claude panel's primary "hero" metric. Default 5-hour; the panel's

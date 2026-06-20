@@ -19,8 +19,10 @@ struct SettingsView: View {
                 .tabItem { Label(lang.tr("Floating", "浮動"), systemImage: "macwindow.on.rectangle") }
             BridgeSettings()
                 .tabItem { Label(lang.tr("Claude Quota", "Claude 額度"), systemImage: "bolt.horizontal.circle") }
+            AdvancedSettings()
+                .tabItem { Label(lang.tr("Advanced", "進階"), systemImage: "network") }
         }
-        .frame(width: 440, height: 420)
+        .frame(width: 440, height: 440)
     }
 }
 
@@ -188,6 +190,66 @@ private struct FloatingSettings: View {
             .disabled(!enabled)
         }
         .formStyle(.grouped)
+    }
+}
+
+// MARK: - Advanced (network opt-in)
+
+private struct AdvancedSettings: View {
+    @EnvironmentObject private var lang: LanguageStore
+    @AppStorage(SettingsKeys.netCodexQuota) private var codexQuota = false
+    @AppStorage(SettingsKeys.netAccurateCost) private var accurateCost = false
+    @State private var pending: NetworkFeature?
+
+    var body: some View {
+        Form {
+            Section(lang.tr("Network features (off by default)", "網路功能（預設關閉）")) {
+                featureToggle(.codexQuota)
+                featureToggle(.accurateCost)
+            }
+            Section {
+                Text(lang.tr("AgentMeter is fully offline by default — it never connects unless you enable a feature above, and each asks first. Reads only local files; never the Keychain.",
+                             "AgentMeter 預設完全離線——除非你在上面啟用某項功能(且每項都會先詢問),否則永不連線。只讀本機檔案、不讀 Keychain。"))
+                    .font(.caption).foregroundStyle(.secondary)
+                Text(lang.tr("These are experimental and may be unavailable until verified provider APIs are wired in.",
+                             "這些為實驗性功能,在接上經驗證的供應商 API 前可能無法使用。"))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .alert(pending?.title ?? "",
+               isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
+               presenting: pending) { feature in
+            Button(lang.tr("Cancel", "取消"), role: .cancel) {}
+            Button(lang.tr("Enable", "啟用")) { binding(for: feature).wrappedValue = true }
+        } message: { feature in
+            Text(feature.explanation)
+        }
+    }
+
+    private func featureToggle(_ feature: NetworkFeature) -> some View {
+        Toggle(isOn: Binding(
+            get: { binding(for: feature).wrappedValue },
+            set: { newValue in
+                if newValue { pending = feature }      // confirm before enabling
+                else { binding(for: feature).wrappedValue = false }
+            })) {
+            HStack(spacing: 6) {
+                Text(feature.title)
+                Text(lang.tr("needs internet", "需連網"))
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Color.orange.opacity(0.18), in: Capsule())
+                    .foregroundStyle(.orange)
+            }
+        }
+    }
+
+    private func binding(for feature: NetworkFeature) -> Binding<Bool> {
+        switch feature {
+        case .codexQuota:   return $codexQuota
+        case .accurateCost: return $accurateCost
+        }
     }
 }
 

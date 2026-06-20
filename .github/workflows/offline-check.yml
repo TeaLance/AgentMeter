@@ -1,0 +1,16 @@
+name: offline-check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# Enforces the offline-by-default guarantee: no networking outside
+# Sources/AgentMeter/Network/ (and none at all in AgentMeterCore).
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check no networking outside Network/
+        run: ./Scripts/check-offline.sh
