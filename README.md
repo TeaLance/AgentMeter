@@ -4,10 +4,10 @@
 ![Platform](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)
 [![License: MIT](https://img.shields.io/github/license/TeaLance/AgentMeter)](LICENSE)
 
-在 macOS 選單列即時看到 **Claude Code** 與 **OpenAI Codex** 的用量——context window 使用率、訂閱額度（5 小時／每週）、今日 token 與訊息數。資料全部讀本機檔案，**不需要 API key、不連網**。
+在 macOS 選單列即時看到 **Claude Code** 與 **OpenAI Codex** 的用量——context window 使用率、訂閱額度（5 小時／每週）、今日 token 與訊息數。用量統計讀本機檔案、**不需要 API key**；「即時額度／登入帳號」為選用的連網功能，**可一鍵關成完全離線**。
 
 ```
- CC 231K  5h 62%  7d 16%          ← 選單列直接顯示你選的指標
+ ✳ 5h 62% · 7d 16%   ❖ 5h 1%      ← 選單列：每個服務前有 agent 標誌 + 你選的指標
  ┌──────────────────────────────┐
  │ Claude Code                ●  │
  │   Context window  289k/1.0M 29%│
@@ -16,7 +16,7 @@
  │   Weekly              14% · 4d │
  │   今日 2.4M   訊息 542          │
  │ Codex                      ●  │
- │   今日 …                       │
+ │   5-hour limit          1% · 5h│
  └──────────────────────────────┘
 ```
 
@@ -32,16 +32,16 @@ brew install --cask TeaLance/tap/agentmeter
 
 ## 功能
 
-- 選單列可**自選多個指標**並排顯示，不用點開就看得到
+- 選單列可**自選多個指標**並排顯示，每個服務前有 agent 標誌（可關），並可選直向／橫向排列
 - Claude Code 與 Codex 的今日 token、訊息數、context window 使用率
-- 真實的 **5 小時／每週訂閱額度 %** 與 reset 時間（到「設定 → 即時額度」啟用一次即可）
+- 真實的 **5 小時／每週訂閱額度 %** 與 reset 時間（到「設定 → 一般 → 即時額度與連線」啟用即可）
 - 可調更新頻率、開機自動啟動
 
 ## 隱私
 
 用量統計只讀取本機 `~/.claude` 與 `~/.codex` 的紀錄,**不讀 Keychain、不傳送任何資料給第三方**。
 
-為了顯示登入帳號與真實額度,預設會做兩件事(都可在**設定 → 進階**關閉):
+為了顯示登入帳號與真實額度,預設會做兩件事(都可在**設定 → 一般 → 即時額度與連線**關閉):
 - **顯示登入帳號**：讀取本機登入憑證「檔案」(**不讀 Keychain**)解出 email/方案;不連網。
 - **Codex 即時額度**：用本機憑證的權杖連線 OpenAI 取得真實 5h／每週額度。
 
