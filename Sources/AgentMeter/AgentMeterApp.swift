@@ -35,19 +35,43 @@ struct MenuBarLabel: View {
         if cells.isEmpty {
             Image(systemName: "gauge.with.dots.needle.33percent")
         } else {
-            // The menu bar is only ~22pt tall — keep both stacked lines tiny and
-            // tightly spaced so the value line isn't clipped.
-            HStack(spacing: 7) {
-                ForEach(Array(cells.enumerated()), id: \.offset) { _, c in
-                    VStack(spacing: -1.5) {
-                        Text(c.top).font(.system(size: 7)).foregroundStyle(.secondary)
-                        Text(c.bottom).font(.system(size: 9, weight: .semibold)).monospacedDigit()
-                    }
-                    .fixedSize()
-                }
-            }
-            .fixedSize()
+            // SwiftUI multi-line labels get clipped to the menu-bar height, so draw
+            // the stacked label ourselves into a template image the system scales to fit.
+            Image(nsImage: MenuBarLabel.render(cells))
         }
+    }
+
+    /// Render the metric cells as a 2-line-per-cell template image (label on top,
+    /// value below), drawn at natural size so the menu bar scales it down to fit.
+    static func render(_ cells: [(top: String, bottom: String)]) -> NSImage {
+        let topFont = NSFont.systemFont(ofSize: 8, weight: .regular)
+        let botFont = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold)
+        let cellGap: CGFloat = 8
+        let attrs: (NSFont) -> [NSAttributedString.Key: Any] = {
+            [.font: $0, .foregroundColor: NSColor.black]
+        }
+        let pieces = cells.map { c -> (top: NSAttributedString, bot: NSAttributedString, w: CGFloat) in
+            let top = NSAttributedString(string: c.top, attributes: attrs(topFont))
+            let bot = NSAttributedString(string: c.bottom, attributes: attrs(botFont))
+            return (top, bot, max(top.size().width, bot.size().width))
+        }
+        let botH = botFont.boundingRectForFont.height
+        let topH = topFont.boundingRectForFont.height
+        let height = ceil(botH + topH)
+        let width = ceil(pieces.reduce(0) { $0 + $1.w } + cellGap * CGFloat(max(0, pieces.count - 1)))
+
+        let image = NSImage(size: NSSize(width: max(1, width), height: max(1, height)))
+        image.lockFocus()
+        var x: CGFloat = 0
+        for p in pieces {
+            let ts = p.top.size(), bs = p.bot.size()
+            p.bot.draw(at: NSPoint(x: x + (p.w - bs.width) / 2, y: 0))
+            p.top.draw(at: NSPoint(x: x + (p.w - ts.width) / 2, y: botH))
+            x += p.w + cellGap
+        }
+        image.unlockFocus()
+        image.isTemplate = true   // adapt to light/dark menu bar automatically
+        return image
     }
 }
 
