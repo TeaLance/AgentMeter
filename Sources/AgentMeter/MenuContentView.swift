@@ -66,7 +66,8 @@ struct MenuContentView: View {
 
     private var claudeBlock: some View {
         VStack(alignment: .leading, spacing: AM.Space.s) {
-            serviceHeader(name: "Claude Code", tool: .claudeCode, available: store.claude.available)
+            serviceHeader(name: "Claude Code", tool: .claudeCode, available: store.claude.available,
+                          plan: store.claudeAccount?.plan)
             if store.claude.available {
                 claudeBody
                 footer(store.claude)
@@ -129,14 +130,10 @@ struct MenuContentView: View {
 
     private var codexBlock: some View {
         VStack(alignment: .leading, spacing: AM.Space.s) {
-            serviceHeader(name: "Codex", tool: .codex, available: store.codex.available)
+            serviceHeader(name: "Codex", tool: .codex, available: store.codex.available,
+                          plan: store.codexAccount?.plan)
             if store.codex.available {
-                VStack(alignment: .leading, spacing: AM.Space.m) {
-                    if let cw = store.codex.contextWindow {
-                        heroFromPercent(cw.fraction * 100, label: lang.tr("context", "Context"))
-                        ThinBar(fraction: cw.fraction, level: .forUsed(percent: cw.fraction * 100))
-                    }
-                }
+                codexBody
                 footer(store.codex)
             } else {
                 noData
@@ -144,12 +141,45 @@ struct MenuContentView: View {
         }
     }
 
+    @ViewBuilder private var codexBody: some View {
+        let cw = store.codex.contextWindow
+        let ctxPct = cw.map { $0.fraction * 100 }
+        VStack(alignment: .leading, spacing: AM.Space.m) {
+            if let fh = store.codexFiveHour {
+                // Real networked 5-hour quota.
+                heroFromQuota(fh, label: lang.tr("5-hour", "5 小時額度"))
+                ThinBar(fraction: fh.usedPercent / 100, level: .forUsed(percent: fh.usedPercent))
+                if let cw, let ctxPct {
+                    MetricRow(label: lang.tr("Context", "Context"), fraction: cw.fraction,
+                              value: contextMini(cw, ctxPct), level: .forUsed(percent: ctxPct))
+                }
+                if let wk = store.codexWeekly {
+                    MetricRow(label: lang.tr("weekly", "每週"), fraction: wk.usedPercent / 100,
+                              value: quotaMini(wk), level: .forUsed(percent: wk.usedPercent))
+                }
+            } else if let cw, let ctxPct {
+                heroFromPercent(ctxPct, label: lang.tr("context", "Context"))
+                ThinBar(fraction: cw.fraction, level: .forUsed(percent: ctxPct))
+                if !NetworkFeature.codexQuota.isEnabled {
+                    Button { StatsWindowController.shared.show(tab: .settings) } label: {
+                        Text(lang.tr("Enable live quota (needs internet)", "啟用即時額度(需連網)"))
+                            .font(.system(size: 11))
+                    }
+                    .buttonStyle(.link)
+                }
+            }
+        }
+    }
+
     // MARK: Shared pieces
 
-    private func serviceHeader(name: String, tool: AgentTool, available: Bool) -> some View {
+    private func serviceHeader(name: String, tool: AgentTool, available: Bool, plan: String?) -> some View {
         HStack(spacing: AM.Space.s) {
             ServiceSwatch(color: colors.color(for: tool))
             Text(name).font(.system(size: 13.5, weight: .semibold))
+            if let plan, !plan.isEmpty {
+                Text(plan.capitalized).font(.system(size: 10.5)).foregroundStyle(AM.ink3)
+            }
             Spacer()
             Circle()
                 .fill(available ? Color(amLight: "#27A35A", dark: "#34C759") : AM.ink3.opacity(0.6))

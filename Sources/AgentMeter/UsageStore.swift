@@ -10,6 +10,12 @@ final class UsageStore: ObservableObject {
     @Published private(set) var claude = ToolUsage(tool: .claudeCode, available: false)
     @Published private(set) var codex = ToolUsage(tool: .codex, available: false)
     @Published private(set) var claudeQuota = ClaudeQuota(available: false)
+    // Networked Codex quota (only when the opt-in is enabled).
+    @Published private(set) var codexFiveHour: QuotaWindow?
+    @Published private(set) var codexWeekly: QuotaWindow?
+    // Logged-in accounts (only when "show accounts" opt-in is enabled).
+    @Published private(set) var claudeAccount: ServiceAccount?
+    @Published private(set) var codexAccount: ServiceAccount?
     @Published private(set) var lastRefresh: Date?
     @Published private(set) var isRefreshing = false
 
@@ -44,10 +50,26 @@ final class UsageStore: ObservableObject {
             let codexUsage = (try? CodexReader().read(now: now))
                 ?? ToolUsage(tool: .codex, available: false, lastUpdated: now)
             let quota = ClaudeStatusReader().read()
+
+            // Opt-in: read logged-in accounts from local credential files.
+            let showAccounts = NetworkFeature.showAccounts.isEnabled
+            let reader = CredentialReader()
+            let claudeAcct = showAccounts ? reader.claude()?.account.nonEmpty : nil
+            let codexAcct = showAccounts ? reader.codex()?.account.nonEmpty : nil
+
+            // Opt-in: networked Codex 5h/weekly quota.
+            var codex5h: QuotaWindow?
+            var codexWk: QuotaWindow?
+            if case let .ok(f, w) = await CodexQuotaClient().fetch() { codex5h = f; codexWk = w }
+
             await MainActor.run {
                 self.claude = claudeUsage
                 self.codex = codexUsage
                 self.claudeQuota = quota
+                self.codexFiveHour = codex5h
+                self.codexWeekly = codexWk
+                self.claudeAccount = claudeAcct
+                self.codexAccount = codexAcct
                 self.lastRefresh = now
                 self.isRefreshing = false
             }

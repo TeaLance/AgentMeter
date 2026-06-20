@@ -208,21 +208,21 @@ private struct FloatingSettings: View {
 private struct AdvancedSettings: View {
     @EnvironmentObject private var lang: LanguageStore
     @AppStorage(SettingsKeys.netCodexQuota) private var codexQuota = false
-    @AppStorage(SettingsKeys.netAccurateCost) private var accurateCost = false
+    @AppStorage(SettingsKeys.showAccounts) private var showAccounts = false
     @State private var pending: NetworkFeature?
 
     var body: some View {
         Form {
-            Section(lang.tr("Network features (off by default)", "網路功能（預設關閉）")) {
+            Section(lang.tr("Opt-in features (off by default)", "選用功能（預設關閉）")) {
+                featureToggle(.showAccounts)
                 featureToggle(.codexQuota)
-                featureToggle(.accurateCost)
             }
             Section {
-                Text(lang.tr("AgentMeter is fully offline by default — it never connects unless you enable a feature above, and each asks first. Reads only local files; never the Keychain.",
-                             "AgentMeter 預設完全離線——除非你在上面啟用某項功能(且每項都會先詢問),否則永不連線。只讀本機檔案、不讀 Keychain。"))
+                Text(lang.tr("AgentMeter is fully offline by default — it never connects unless you enable a network feature above, and each asks first. It never reads the Keychain.",
+                             "AgentMeter 預設完全離線——除非你在上面啟用網路功能(且每項都會先詢問),否則永不連線。永不讀取 Keychain。"))
                     .font(.caption).foregroundStyle(.secondary)
-                Text(lang.tr("These are experimental and may be unavailable until verified provider APIs are wired in.",
-                             "這些為實驗性功能,在接上經驗證的供應商 API 前可能無法使用。"))
+                Text(lang.tr("Live quota uses cc-bar's endpoints and is experimental; it may be unavailable if the response format changes.",
+                             "即時額度使用 cc-bar 的端點,屬實驗性;若回應格式改變可能無法使用。"))
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -231,7 +231,10 @@ private struct AdvancedSettings: View {
                isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
                presenting: pending) { feature in
             Button(lang.tr("Cancel", "取消"), role: .cancel) {}
-            Button(lang.tr("Enable", "啟用")) { binding(for: feature).wrappedValue = true }
+            Button(lang.tr("Enable", "啟用")) {
+                binding(for: feature).wrappedValue = true
+                UsageStore.shared.refreshNow()   // pick up the new data immediately
+            }
         } message: { feature in
             Text(feature.explanation)
         }
@@ -242,15 +245,16 @@ private struct AdvancedSettings: View {
             get: { binding(for: feature).wrappedValue },
             set: { newValue in
                 if newValue { pending = feature }      // confirm before enabling
-                else { binding(for: feature).wrappedValue = false }
+                else { binding(for: feature).wrappedValue = false; UsageStore.shared.refreshNow() }
             })) {
             HStack(spacing: 6) {
                 Text(feature.title)
-                Text(lang.tr("needs internet", "需連網"))
+                Text(feature.usesNetwork ? lang.tr("needs internet", "需連網")
+                                         : lang.tr("reads credentials", "讀本機憑證"))
                     .font(.system(size: 9.5, weight: .semibold))
                     .padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(Color.orange.opacity(0.18), in: Capsule())
-                    .foregroundStyle(.orange)
+                    .background((feature.usesNetwork ? Color.orange : Color.secondary).opacity(0.18), in: Capsule())
+                    .foregroundStyle(feature.usesNetwork ? .orange : .secondary)
             }
         }
     }
@@ -258,7 +262,7 @@ private struct AdvancedSettings: View {
     private func binding(for feature: NetworkFeature) -> Binding<Bool> {
         switch feature {
         case .codexQuota:   return $codexQuota
-        case .accurateCost: return $accurateCost
+        case .showAccounts: return $showAccounts
         }
     }
 }
