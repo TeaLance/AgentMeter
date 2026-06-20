@@ -42,6 +42,14 @@ final class CredentialsTests: XCTestCase {
         XCTAssertEqual(ClaudeCredentialParser.email(fromClaudeConfigJSON: json), "fallback@x.com")
     }
 
+    func testClaudeAccountFromConfigDerivesPlan() {
+        // Real shape: token lives in the Keychain, but ~/.claude.json has the account.
+        let json = #"{"oauthAccount":{"emailAddress":"a@b.com","organizationType":"claude_team"}}"#.data(using: .utf8)!
+        let a = ClaudeCredentialParser.account(fromClaudeConfigJSON: json)
+        XCTAssertEqual(a?.email, "a@b.com")
+        XCTAssertEqual(a?.plan, "team")
+    }
+
     func testCodexCredentialsParseDecodesIdToken() {
         let idToken = makeJWT([
             "email": "c@x.com",

@@ -71,6 +71,18 @@ public enum ClaudeCredentialParser {
               let acct = root["oauthAccount"] as? [String: Any] else { return nil }
         return acct["emailAddress"] as? String
     }
+
+    /// Account (email + plan) from `~/.claude.json`. This file is present even when
+    /// the token lives in the Keychain, so it's how we show the Claude account
+    /// without reading the Keychain. Plan is derived from `organizationType`
+    /// (e.g. "claude_team" → "team").
+    public static func account(fromClaudeConfigJSON data: Data) -> ServiceAccount? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let acct = root["oauthAccount"] as? [String: Any] else { return nil }
+        var plan = acct["organizationType"] as? String
+        if let p = plan, p.hasPrefix("claude_") { plan = String(p.dropFirst("claude_".count)) }
+        return ServiceAccount(email: acct["emailAddress"] as? String, plan: plan).nonEmpty
+    }
 }
 
 // MARK: - Codex
@@ -104,12 +116,21 @@ public struct CredentialReader {
     public init(home: URL = FileManager.default.homeDirectoryForCurrentUser) { self.home = home }
 
     public func claude() -> ClaudeCredentials? {
+        // The token may be in ~/.claude/.credentials.json (older setups) — read it
+        // if present. macOS keeps it in the Keychain instead, which we never read;
+        // the account (email/plan) then comes from ~/.claude.json below.
         let credsURL = home.appendingPathComponent(".claude/.credentials.json")
-        guard let data = try? Data(contentsOf: credsURL),
-              var creds = ClaudeCredentialParser.parse(credentialsJSON: data) else { return nil }
-        if creds.account.email == nil,
-           let cfg = try? Data(contentsOf: home.appendingPathComponent(".claude.json")) {
-            creds.account.email = ClaudeCredentialParser.email(fromClaudeConfigJSON: cfg)
+        var creds = (try? Data(contentsOf: credsURL)).flatMap(ClaudeCredentialParser.parse(credentialsJSON:))
+
+        if let cfg = try? Data(contentsOf: home.appendingPathComponent(".claude.json")),
+           let acct = ClaudeCredentialParser.account(fromClaudeConfigJSON: cfg) {
+            if creds == nil {
+                creds = ClaudeCredentials(accessToken: nil, refreshToken: nil,
+                                          expiresAtMillis: nil, account: acct)
+            } else {
+                if creds!.account.email == nil { creds!.account.email = acct.email }
+                if creds!.account.plan == nil { creds!.account.plan = acct.plan }
+            }
         }
         return creds
     }
