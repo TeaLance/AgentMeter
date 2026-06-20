@@ -13,8 +13,13 @@ struct MenuContentView: View {
     @AppStorage(SettingsKeys.showClaude) private var showClaude = true
     @AppStorage(SettingsKeys.showCodex) private var showCodex = true
     @AppStorage(SettingsKeys.heroMetricClaude) private var claudeHeroRaw = ClaudeHero.fiveHour.rawValue
+    @AppStorage(SettingsKeys.meterShowsRemaining) private var showRemaining = false
 
     private var claudeHero: ClaudeHero { ClaudeHero(rawValue: claudeHeroRaw) ?? .fiveHour }
+
+    /// Displayed percentage given the used %, honoring the remaining-vs-used setting.
+    private func disp(_ used: Double) -> Double { showRemaining ? max(0, 100 - used) : used }
+    private func dispFrac(_ used: Double) -> Double { disp(used) / 100 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: AM.Space.m) {
@@ -47,7 +52,7 @@ struct MenuContentView: View {
                 if store.isRefreshing { ProgressView().controlSize(.small).scaleEffect(0.7) }
                 iconButton("arrow.clockwise") { store.refreshNow() }
                 iconButton("chart.bar") { StatsWindowController.shared.show(tab: .stats) }
-                iconButton("gearshape") { StatsWindowController.shared.show(tab: .settings) }
+                iconButton("gearshape") { StatsWindowController.shared.show(tab: .general) }
                 iconButton("power") { NSApplication.shared.terminate(nil) }
             }
         }
@@ -97,20 +102,20 @@ struct MenuContentView: View {
                                 set: { claudeHeroRaw = ($0 ? ClaudeHero.weekly : .fiveHour).rawValue }),
                             leftLabel: "5h", rightLabel: lang.tr("Wk", "週"))
                     }
-                    ThinBar(fraction: hero.usedPercent / 100, level: .forUsed(percent: hero.usedPercent))
+                    ThinBar(fraction: dispFrac(hero.usedPercent), level: .forUsed(percent: hero.usedPercent))
                 }
                 if let cw, let ctxPct {
-                    MetricRow(label: lang.tr("Context", "Context"), fraction: cw.fraction,
+                    MetricRow(label: lang.tr("Context", "Context"), fraction: dispFrac(ctxPct),
                               value: contextMini(cw, ctxPct), level: .forUsed(percent: ctxPct))
                 }
                 if let other = useWeekly ? q.fiveHour : q.weekly {
                     MetricRow(label: useWeekly ? lang.tr("5-hour", "5 小時") : lang.tr("weekly", "每週"),
-                              fraction: other.usedPercent / 100, value: quotaMini(other),
+                              fraction: dispFrac(other.usedPercent), value: quotaMini(other),
                               level: .forUsed(percent: other.usedPercent))
                 }
             } else if let cw, let ctxPct {
                 heroFromPercent(ctxPct, label: lang.tr("context", "Context"))
-                ThinBar(fraction: cw.fraction, level: .forUsed(percent: ctxPct))
+                ThinBar(fraction: dispFrac(ctxPct), level: .forUsed(percent: ctxPct))
                 enableQuotaLink
             } else {
                 enableQuotaLink
@@ -119,7 +124,7 @@ struct MenuContentView: View {
     }
 
     private var enableQuotaLink: some View {
-        Button { StatsWindowController.shared.show(tab: .settings) } label: {
+        Button { StatsWindowController.shared.show(tab: .advanced) } label: {
             Text(lang.tr("Enable live 5h / weekly quota", "啟用即時 5h／每週額度"))
                 .font(.system(size: 11))
         }
@@ -148,20 +153,20 @@ struct MenuContentView: View {
             if let fh = store.codexFiveHour {
                 // Real networked 5-hour quota.
                 heroFromQuota(fh, label: lang.tr("5-hour", "5 小時額度"))
-                ThinBar(fraction: fh.usedPercent / 100, level: .forUsed(percent: fh.usedPercent))
+                ThinBar(fraction: dispFrac(fh.usedPercent), level: .forUsed(percent: fh.usedPercent))
                 if let cw, let ctxPct {
-                    MetricRow(label: lang.tr("Context", "Context"), fraction: cw.fraction,
+                    MetricRow(label: lang.tr("Context", "Context"), fraction: dispFrac(ctxPct),
                               value: contextMini(cw, ctxPct), level: .forUsed(percent: ctxPct))
                 }
                 if let wk = store.codexWeekly {
-                    MetricRow(label: lang.tr("weekly", "每週"), fraction: wk.usedPercent / 100,
+                    MetricRow(label: lang.tr("weekly", "每週"), fraction: dispFrac(wk.usedPercent),
                               value: quotaMini(wk), level: .forUsed(percent: wk.usedPercent))
                 }
             } else if let cw, let ctxPct {
                 heroFromPercent(ctxPct, label: lang.tr("context", "Context"))
-                ThinBar(fraction: cw.fraction, level: .forUsed(percent: ctxPct))
+                ThinBar(fraction: dispFrac(ctxPct), level: .forUsed(percent: ctxPct))
                 if !NetworkFeature.codexQuota.isEnabled {
-                    Button { StatsWindowController.shared.show(tab: .settings) } label: {
+                    Button { StatsWindowController.shared.show(tab: .advanced) } label: {
                         Text(lang.tr("Enable live quota (needs internet)", "啟用即時額度(需連網)"))
                             .font(.system(size: 11))
                     }
@@ -190,18 +195,19 @@ struct MenuContentView: View {
     private func heroFromQuota(_ w: QuotaWindow, label: String) -> some View {
         var full = label
         if let r = shortReset(until: w.resetsAt) { full += " · " + lang.tr("resets \(r)", "\(r) 重置") }
-        return HeroNumber(percent: w.usedPercent, label: full, level: .forUsed(percent: w.usedPercent))
+        return HeroNumber(percent: disp(w.usedPercent), label: full, level: .forUsed(percent: w.usedPercent))
     }
 
-    private func heroFromPercent(_ pct: Double, label: String) -> some View {
-        HeroNumber(percent: pct, label: label, level: .forUsed(percent: pct))
+    /// `usedPct` is the used percentage; display honors the remaining/used setting.
+    private func heroFromPercent(_ usedPct: Double, label: String) -> some View {
+        HeroNumber(percent: disp(usedPct), label: label, level: .forUsed(percent: usedPct))
     }
 
     private func footer(_ u: ToolUsage) -> some View {
         VStack(alignment: .leading, spacing: AM.Space.s) {
             Hairline()
             HStack(spacing: AM.Space.l) {
-                footerItem(lang.tr("Today", "今日"), "\(u.today.billableTotal.compactTokenString) tokens")
+                footerItem(lang.tr("Today", "今日"), "\(u.today.total.compactTokenString) tokens")
                 footerItem(lang.tr("Messages", "訊息"), "\(u.messageCount)")
                 if !u.todayByModel.isEmpty {
                     footerItem("", moneyString(costEstimate(byModel: u.todayByModel)))
@@ -224,12 +230,12 @@ struct MenuContentView: View {
 
     // MARK: Formatting
 
-    private func contextMini(_ cw: ContextWindow, _ pct: Double) -> String {
-        "\(Int(pct.rounded()))% · \(cw.used.compactTokenString)"
+    private func contextMini(_ cw: ContextWindow, _ usedPct: Double) -> String {
+        "\(Int(disp(usedPct).rounded()))% · \(cw.used.compactTokenString)"
     }
 
     private func quotaMini(_ w: QuotaWindow) -> String {
-        let pct = "\(Int(w.usedPercent.rounded()))%"
+        let pct = "\(Int(disp(w.usedPercent).rounded()))%"
         if let r = shortReset(until: w.resetsAt) { return "\(pct) · \(r)" }
         return pct
     }

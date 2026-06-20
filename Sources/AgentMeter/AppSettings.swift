@@ -8,6 +8,8 @@ enum SettingsKeys {
     static let showCodex = "showCodex"
     /// Which quota the Claude panel shows as its hero number (`ClaudeHero`).
     static let heroMetricClaude = "heroMetricClaude"
+    /// Meters show remaining (true) vs used (false) percentage.
+    static let meterShowsRemaining = "meterShowsRemaining"
     // Floating desktop HUD.
     static let floatingEnabled = "floatingEnabled"
     static let floatingShowClaude = "floatingShowClaude"

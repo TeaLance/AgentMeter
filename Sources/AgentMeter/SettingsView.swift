@@ -2,26 +2,36 @@ import SwiftUI
 import ServiceManagement
 import AgentMeterCore
 
-struct SettingsView: View {
-    @EnvironmentObject private var store: UsageStore
+/// The single window's content: usage stats + settings panes in one tab bar.
+struct RootTabView: View {
     @EnvironmentObject private var lang: LanguageStore
-    @EnvironmentObject private var colors: ServiceColorStore
+    @EnvironmentObject private var nav: MainWindowModel
 
     var body: some View {
-        TabView {
+        TabView(selection: $nav.selection) {
+            StatsRootView()
+                .tabItem { Label(lang.tr("Usage", "用量統計"), systemImage: "chart.bar") }
+                .tag(AppTab.stats)
             GeneralSettings()
                 .tabItem { Label(lang.tr("General", "一般"), systemImage: "gearshape") }
+                .tag(AppTab.general)
             AppearanceSettings()
                 .tabItem { Label(lang.tr("Appearance", "外觀"), systemImage: "paintpalette") }
+                .tag(AppTab.appearance)
             MenuBarSettings()
                 .tabItem { Label(lang.tr("Menu Bar", "選單列"), systemImage: "menubar.rectangle") }
+                .tag(AppTab.menubar)
             FloatingSettings()
                 .tabItem { Label(lang.tr("Floating", "浮動"), systemImage: "macwindow.on.rectangle") }
+                .tag(AppTab.floating)
             BridgeSettings()
                 .tabItem { Label(lang.tr("Claude Quota", "Claude 額度"), systemImage: "bolt.horizontal.circle") }
+                .tag(AppTab.bridge)
             AdvancedSettings()
                 .tabItem { Label(lang.tr("Advanced", "進階"), systemImage: "network") }
+                .tag(AppTab.advanced)
         }
+        .background(AM.paper)
     }
 }
 
@@ -30,13 +40,20 @@ struct SettingsView: View {
 private struct GeneralSettings: View {
     @EnvironmentObject private var store: UsageStore
     @EnvironmentObject private var lang: LanguageStore
+    @EnvironmentObject private var colors: ServiceColorStore
     @AppStorage(SettingsKeys.interval) private var interval: Double = 30
     @AppStorage(SettingsKeys.heroMetricClaude) private var claudeHeroRaw = ClaudeHero.fiveHour.rawValue
+    @AppStorage(SettingsKeys.meterShowsRemaining) private var meterShowsRemaining = false
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
 
     var body: some View {
         Form {
+            Section(lang.tr("Accounts", "帳號")) {
+                accountRow("Claude Code", provider: "Anthropic", tool: .claudeCode, account: store.claudeAccount)
+                accountRow("Codex", provider: "OpenAI", tool: .codex, account: store.codexAccount)
+            }
+
             Picker(lang.tr("Language", "語言"), selection: $lang.language) {
                 Text("繁體中文").tag(AppLanguage.zh)
                 Text("English").tag(AppLanguage.en)
@@ -54,6 +71,11 @@ private struct GeneralSettings: View {
                 Text(lang.tr("Weekly", "每週額度")).tag(ClaudeHero.weekly.rawValue)
             }
 
+            Picker(lang.tr("Meters show", "量表顯示"), selection: $meterShowsRemaining) {
+                Text(lang.tr("Used", "已使用")).tag(false)
+                Text(lang.tr("Remaining", "剩餘")).tag(true)
+            }
+
             Section {
                 Toggle(lang.tr("Launch at login", "開機時自動啟動"), isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, on in setLaunchAtLogin(on) }
@@ -68,6 +90,34 @@ private struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func accountRow(_ name: String, provider: String, tool: AgentTool,
+                            account: ServiceAccount?) -> some View {
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(colors.color(for: tool)).frame(width: 22, height: 22)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 5) {
+                    Text(name).font(.system(size: 12.5, weight: .semibold))
+                    Text(provider).font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+                if let a = account, !a.isEmpty {
+                    Text([a.email, a.plan?.capitalized].compactMap { $0 }.joined(separator: " · "))
+                        .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                } else {
+                    Text(lang.tr("Not detected", "未偵測到"))
+                        .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            HStack(spacing: 4) {
+                Circle().fill(account != nil ? Color.green : Color.secondary.opacity(0.4))
+                    .frame(width: 7, height: 7)
+                Text(account != nil ? lang.tr("connected", "已連線") : lang.tr("offline", "未連線"))
+                    .font(.system(size: 10.5)).foregroundStyle(.secondary)
+            }
+        }
     }
 
     /// SMAppService.mainApp only works for a bundled, installed .app — not a bare
@@ -207,23 +257,15 @@ private struct FloatingSettings: View {
 
 private struct AdvancedSettings: View {
     @EnvironmentObject private var lang: LanguageStore
-    @AppStorage(SettingsKeys.netCodexQuota) private var codexQuota = false
-    @AppStorage(SettingsKeys.showAccounts) private var showAccounts = false
+    @AppStorage(SettingsKeys.netCodexQuota) private var codexQuota = true
+    @AppStorage(SettingsKeys.showAccounts) private var showAccounts = true
     @State private var pending: NetworkFeature?
 
     var body: some View {
         Form {
-            Section(lang.tr("Opt-in features (off by default)", "選用功能（預設關閉）")) {
+            Section(lang.tr("Connectivity", "連線")) {
                 featureToggle(.showAccounts)
                 featureToggle(.codexQuota)
-            }
-            Section {
-                Text(lang.tr("AgentMeter is fully offline by default — it never connects unless you enable a network feature above, and each asks first. It never reads the Keychain.",
-                             "AgentMeter 預設完全離線——除非你在上面啟用網路功能(且每項都會先詢問),否則永不連線。永不讀取 Keychain。"))
-                    .font(.caption).foregroundStyle(.secondary)
-                Text(lang.tr("Live quota uses cc-bar's endpoints and is experimental; it may be unavailable if the response format changes.",
-                             "即時額度使用 cc-bar 的端點,屬實驗性;若回應格式改變可能無法使用。"))
-                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

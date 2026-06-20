@@ -29,9 +29,9 @@ final class UsageStore: ObservableObject {
         startTimer()
     }
 
-    /// Combined "billable" (cache-read-excluded) tokens used today.
-    var combinedTodayBillable: Int {
-        claude.today.billableTotal + codex.today.billableTotal
+    /// Combined total tokens used today (includes cache reads, to match the stats view).
+    var combinedTodayTotal: Int {
+        claude.today.total + codex.today.total
     }
 
     func setInterval(_ seconds: TimeInterval) {

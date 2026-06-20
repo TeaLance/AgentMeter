@@ -66,35 +66,31 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
         }
     }
 
-    /// The metric's display value, or nil when there's no data to show.
+    /// A menu-bar cell rendered as two stacked lines: a short label on top and the
+    /// value below (Stats-app style). `label` is the kind tag ("5h"/"ctx"/…) or
+    /// empty for token counts (where the tool tag is the top line).
     @MainActor
-    func value(_ store: UsageStore) -> String? {
+    func parts(_ store: UsageStore) -> (label: String, value: String)? {
         switch self {
-        case .claudeTokens:
-            return tokenString(store.claude)
-        case .codexTokens:
-            return tokenString(store.codex)
+        case .claudeTokens:   return tokenString(store.claude).map { ("", $0) }
+        case .codexTokens:    return tokenString(store.codex).map { ("", $0) }
         case .combinedTokens:
-            let total = store.combinedTodayBillable
-            return total > 0 ? total.compactTokenString : nil
-        case .claudeFiveHour:
-            return store.claudeQuota.fiveHour.map { "5h \(percent($0.usedPercent))%" }
-        case .claudeWeekly:
-            return store.claudeQuota.weekly.map { "7d \(percent($0.usedPercent))%" }
+            let total = store.combinedTodayTotal
+            return total > 0 ? ("", total.compactTokenString) : nil
+        case .claudeFiveHour: return store.claudeQuota.fiveHour.map { ("5h", "\(percent($0.usedPercent))%") }
+        case .claudeWeekly:   return store.claudeQuota.weekly.map { ("7d", "\(percent($0.usedPercent))%") }
         case .claudeContext:
             let cw = store.claudeQuota.contextWindow ?? store.claude.contextWindow
-            return cw.map { "ctx \(Int(($0.fraction * 100).rounded()))%" }
+            return cw.map { ("ctx", "\(Int(($0.fraction * 100).rounded()))%") }
         case .codexContext:
-            return store.codex.contextWindow.map { "ctx \(Int(($0.fraction * 100).rounded()))%" }
-        case .claudeMessages:
-            return messageString(store.claude)
-        case .codexMessages:
-            return messageString(store.codex)
+            return store.codex.contextWindow.map { ("ctx", "\(Int(($0.fraction * 100).rounded()))%") }
+        case .claudeMessages: return messageString(store.claude).map { ("msg", $0) }
+        case .codexMessages:  return messageString(store.codex).map { ("msg", $0) }
         }
     }
 
     private func tokenString(_ usage: ToolUsage) -> String? {
-        let total = usage.today.billableTotal
+        let total = usage.today.total
         return (usage.available && total > 0) ? total.compactTokenString : nil
     }
 
@@ -104,23 +100,29 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
 
     private func percent(_ p: Double) -> Int { Int(p.rounded()) }
 
-    // MARK: - Bar rendering
+    // MARK: - Cell rendering
 
-    /// Build the inline menu-bar string for the selected metrics (data-less ones hidden).
+    /// Build stacked (top, bottom) cells for the selected metrics; data-less ones
+    /// are hidden. Tool prefix is added to the top line only when the same kind
+    /// spans both tools (so they can be told apart).
     @MainActor
-    static func barString(_ selected: [MenuBarMetric], store: UsageStore) -> String {
-        // A kind needs tool prefixes only when more than one tool's metric of that
-        // kind is selected (e.g. Claude tokens AND Codex tokens).
+    static func cells(_ selected: [MenuBarMetric], store: UsageStore) -> [(top: String, bottom: String)] {
         var toolsByKind: [Kind: Set<Tool>] = [:]
         for m in selected { toolsByKind[m.kind, default: []].insert(m.tool) }
 
-        var parts: [String] = []
-        for metric in selected {
-            guard let value = metric.value(store) else { continue }
-            let needsPrefix = (toolsByKind[metric.kind]?.count ?? 0) > 1
-            parts.append(needsPrefix ? "\(metric.toolPrefix) \(value)" : value)
+        var out: [(String, String)] = []
+        for m in selected {
+            guard let pv = m.parts(store) else { continue }
+            let needsPrefix = (toolsByKind[m.kind]?.count ?? 0) > 1
+            let top: String
+            if pv.label.isEmpty {
+                top = m.toolPrefix                                   // tokens: tool tag identifies it
+            } else {
+                top = needsPrefix ? "\(m.toolPrefix) \(pv.label)" : pv.label
+            }
+            out.append((top, pv.value))
         }
-        return parts.joined(separator: "  ")
+        return out
     }
 
     // MARK: - Persistence

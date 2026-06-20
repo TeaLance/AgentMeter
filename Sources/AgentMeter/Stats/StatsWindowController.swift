@@ -9,10 +9,10 @@ final class StatsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private let nav = MainWindowModel()
 
-    func show(tab: MainTab) {
-        nav.tab = tab
+    func show(tab: AppTab) {
+        nav.selection = tab
         if window == nil {
-            let root = MainWindowRootView()
+            let root = RootTabView()
                 .environmentObject(UsageStore.shared)
                 .environmentObject(LanguageStore.shared)
                 .environmentObject(ServiceColorStore.shared)

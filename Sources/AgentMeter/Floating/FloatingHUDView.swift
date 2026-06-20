@@ -9,6 +9,7 @@ struct FloatingHUDView: View {
     @AppStorage(SettingsKeys.floatingShowClaude) private var showClaude = true
     @AppStorage(SettingsKeys.floatingShowCodex) private var showCodex = true
     @AppStorage(SettingsKeys.floatingIdleOpacity) private var idleOpacity = 0.7
+    @AppStorage(SettingsKeys.meterShowsRemaining) private var showRemaining = false
     @State private var hovering = false
 
     struct Metric { let used: Double; let label: String
@@ -36,8 +37,9 @@ struct FloatingHUDView: View {
     }
 
     private func cell(_ tool: AgentTool, _ name: String, _ m: Metric) -> some View {
-        VStack(spacing: 5) {
-            RingMeter(fraction: m.fraction, level: m.level, percentText: m.pct,
+        let shown = showRemaining ? max(0, 100 - m.used) : m.used
+        return VStack(spacing: 5) {
+            RingMeter(fraction: shown / 100, level: m.level, percentText: "\(Int(shown.rounded()))%",
                       trackColor: colors.color(for: tool).opacity(0.3))
             HStack(spacing: 4) {
                 ServiceSwatch(color: colors.color(for: tool), size: 6)

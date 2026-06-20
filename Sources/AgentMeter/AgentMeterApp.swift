@@ -29,11 +29,18 @@ struct MenuBarLabel: View {
     @AppStorage(SettingsKeys.menuBarMetrics) private var metricsCSV = defaultMenuBarMetricsCSV
 
     var body: some View {
-        let text = MenuBarMetric.barString(MenuBarMetric.list(fromCSV: metricsCSV), store: store)
-        if text.isEmpty {
+        let cells = MenuBarMetric.cells(MenuBarMetric.list(fromCSV: metricsCSV), store: store)
+        if cells.isEmpty {
             Image(systemName: "gauge.with.dots.needle.33percent")
         } else {
-            Text(text)
+            HStack(spacing: 8) {
+                ForEach(Array(cells.enumerated()), id: \.offset) { _, c in
+                    VStack(spacing: 0) {
+                        Text(c.top).font(.system(size: 8))
+                        Text(c.bottom).font(.system(size: 10, weight: .medium)).monospacedDigit()
+                    }
+                }
+            }
         }
     }
 }

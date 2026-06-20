@@ -44,5 +44,6 @@ enum NetworkFeature: String, CaseIterable, Identifiable {
         }
     }
 
-    var isEnabled: Bool { UserDefaults.standard.bool(forKey: defaultsKey) }
+    /// Default ON (for accurate quota / account display): absent key reads as true.
+    var isEnabled: Bool { (UserDefaults.standard.object(forKey: defaultsKey) as? Bool) ?? true }
 }

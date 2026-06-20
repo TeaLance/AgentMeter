@@ -243,7 +243,7 @@ struct StatsRootView: View {
         }
     }
 
-    private var totalTokens: Int { includedHistories.reduce(0) { $0 + $1.grandTotal.billableTotal } }
+    private var totalTokens: Int { includedHistories.reduce(0) { $0 + $1.grandTotal.total } }
     private var totalCost: CostEstimate { includedHistories.reduce(.zeroComplete) { $0 + $1.cost } }
     private func cost(_ tool: AgentTool) -> CostEstimate {
         (tool == .claudeCode ? vm.claude : vm.codex)?.cost ?? .zeroComplete
@@ -252,10 +252,10 @@ struct StatsRootView: View {
     private var dailyPoints: [(day: Date, claude: Int, codex: Int)] {
         var byDay: [Date: (Int, Int)] = [:]
         if service != .codex, let c = vm.claude {
-            for d in c.days { byDay[d.day, default: (0, 0)].0 += d.total.billableTotal }
+            for d in c.days { byDay[d.day, default: (0, 0)].0 += d.total.total }
         }
         if service != .claude, let x = vm.codex {
-            for d in x.days { byDay[d.day, default: (0, 0)].1 += d.total.billableTotal }
+            for d in x.days { byDay[d.day, default: (0, 0)].1 += d.total.total }
         }
         return byDay.keys.sorted().map { (day: $0, claude: byDay[$0]!.0, codex: byDay[$0]!.1) }
     }
@@ -270,7 +270,7 @@ struct StatsRootView: View {
             guard let history else { return }
             for (key, bd) in history.byModel {
                 rows.append(ModelRow(id: history.tool.rawValue + key, model: key,
-                                     tokens: bd.billableTotal,
+                                     tokens: bd.total,
                                      cost: costEstimate(bd, model: ModelKey(raw: key)), color: color))
             }
         }
