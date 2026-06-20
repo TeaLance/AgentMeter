@@ -27,20 +27,26 @@ struct AgentMeterApp: App {
 struct MenuBarLabel: View {
     @ObservedObject var store: UsageStore
     @AppStorage(SettingsKeys.menuBarMetrics) private var metricsCSV = defaultMenuBarMetricsCSV
+    // Re-render when the used/remaining setting changes (parts() reads it).
+    @AppStorage(SettingsKeys.meterShowsRemaining) private var showRemaining = false
 
     var body: some View {
         let cells = MenuBarMetric.cells(MenuBarMetric.list(fromCSV: metricsCSV), store: store)
         if cells.isEmpty {
             Image(systemName: "gauge.with.dots.needle.33percent")
         } else {
-            HStack(spacing: 8) {
+            // The menu bar is only ~22pt tall — keep both stacked lines tiny and
+            // tightly spaced so the value line isn't clipped.
+            HStack(spacing: 7) {
                 ForEach(Array(cells.enumerated()), id: \.offset) { _, c in
-                    VStack(spacing: 0) {
-                        Text(c.top).font(.system(size: 8))
-                        Text(c.bottom).font(.system(size: 10, weight: .medium)).monospacedDigit()
+                    VStack(spacing: -1.5) {
+                        Text(c.top).font(.system(size: 7)).foregroundStyle(.secondary)
+                        Text(c.bottom).font(.system(size: 9, weight: .semibold)).monospacedDigit()
                     }
+                    .fixedSize()
                 }
             }
+            .fixedSize()
         }
     }
 }

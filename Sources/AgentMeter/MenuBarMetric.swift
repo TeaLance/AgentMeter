@@ -71,19 +71,23 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
     /// empty for token counts (where the tool tag is the top line).
     @MainActor
     func parts(_ store: UsageStore) -> (label: String, value: String)? {
+        // Honor the used/remaining display setting for percentage metrics.
+        let remaining = UserDefaults.standard.bool(forKey: SettingsKeys.meterShowsRemaining)
+        func pct(_ used: Double) -> String { "\(Int((remaining ? max(0, 100 - used) : used).rounded()))%" }
+
         switch self {
         case .claudeTokens:   return tokenString(store.claude).map { ("", $0) }
         case .codexTokens:    return tokenString(store.codex).map { ("", $0) }
         case .combinedTokens:
             let total = store.combinedTodayTotal
             return total > 0 ? ("", total.compactTokenString) : nil
-        case .claudeFiveHour: return store.claudeQuota.fiveHour.map { ("5h", "\(percent($0.usedPercent))%") }
-        case .claudeWeekly:   return store.claudeQuota.weekly.map { ("7d", "\(percent($0.usedPercent))%") }
+        case .claudeFiveHour: return store.claudeQuota.fiveHour.map { ("5h", pct($0.usedPercent)) }
+        case .claudeWeekly:   return store.claudeQuota.weekly.map { ("7d", pct($0.usedPercent)) }
         case .claudeContext:
             let cw = store.claudeQuota.contextWindow ?? store.claude.contextWindow
-            return cw.map { ("ctx", "\(Int(($0.fraction * 100).rounded()))%") }
+            return cw.map { ("ctx", pct($0.fraction * 100)) }
         case .codexContext:
-            return store.codex.contextWindow.map { ("ctx", "\(Int(($0.fraction * 100).rounded()))%") }
+            return store.codex.contextWindow.map { ("ctx", pct($0.fraction * 100)) }
         case .claudeMessages: return messageString(store.claude).map { ("msg", $0) }
         case .codexMessages:  return messageString(store.codex).map { ("msg", $0) }
         }
@@ -97,8 +101,6 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
     private func messageString(_ usage: ToolUsage) -> String? {
         (usage.available && usage.messageCount > 0) ? "\(usage.messageCount)" : nil
     }
-
-    private func percent(_ p: Double) -> Int { Int(p.rounded()) }
 
     // MARK: - Cell rendering
 
