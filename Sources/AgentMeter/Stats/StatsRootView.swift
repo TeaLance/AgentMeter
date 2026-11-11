@@ -151,7 +151,11 @@ struct StatsRootView: View {
             HStack(spacing: 34) {
                 kpi(lang.tr("Total tokens", "總 tokens"), Int(totalTokens).compactTokenString)
                 kpi(lang.tr("Total cost", "總花費"), moneyString(totalCost))
-                kpi("Claude / Codex", "\(moneyString(cost(.claudeCode))) · \(moneyString(cost(.codex)))", small: true)
+                // The per-service breakdown only means something in All mode; with a
+                // single service selected it would just repeat Total cost (#2).
+                if service == .all {
+                    kpi("Claude / Codex", "\(moneyString(cost(.claudeCode))) · \(moneyString(cost(.codex)))", small: true)
+                }
             }
             Rectangle().fill(AM.hairline).frame(height: 1)
             sectionHeader(lang.tr("Daily usage", "每日用量"))
