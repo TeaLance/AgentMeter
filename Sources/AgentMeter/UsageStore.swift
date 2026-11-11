@@ -61,13 +61,24 @@ final class UsageStore: ObservableObject {
             var codex5h: QuotaWindow?
             var codexWk: QuotaWindow?
             if case let .ok(f, w) = await CodexQuotaClient().fetch() { codex5h = f; codexWk = w }
+            // Offline fallback from Codex's own rollout files (not gated by the network opt-in).
+            let local = CodexLocalQuotaReader().read()
+            codex5h = codex5h ?? local?.fiveHour
+            codexWk = codexWk ?? local?.weekly
 
             await MainActor.run {
                 self.claude = claudeUsage
                 self.codex = codexUsage
-                self.claudeQuota = quota
-                self.codexFiveHour = codex5h
-                self.codexWeekly = codexWk
+                // Keep the last good value per window: a missing window this round
+                // (partial statusLine payload, failed fetch) must not blank it out.
+                // The published properties double as the in-memory "previous" values.
+                var q = quota
+                q.fiveHour = QuotaMerge.merge(previous: self.claudeQuota.fiveHour, fresh: quota.fiveHour, now: now)
+                q.weekly = QuotaMerge.merge(previous: self.claudeQuota.weekly, fresh: quota.weekly, now: now)
+                if q.fiveHour != nil || q.weekly != nil { q.available = true }
+                self.claudeQuota = q
+                self.codexFiveHour = QuotaMerge.merge(previous: self.codexFiveHour, fresh: codex5h, now: now)
+                self.codexWeekly = QuotaMerge.merge(previous: self.codexWeekly, fresh: codexWk, now: now)
                 self.claudeAccount = claudeAcct
                 self.codexAccount = codexAcct
                 self.lastRefresh = now
