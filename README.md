@@ -43,7 +43,7 @@ brew install --cask TeaLance/tap/agentmeter
 
 為了顯示登入帳號與真實額度,預設會做兩件事(都可在**設定 → 一般 → 即時額度與連線**關閉):
 - **顯示登入帳號**：讀取本機登入憑證「檔案」(**不讀 Keychain**)解出 email/方案;不連網。
-- **Codex 即時額度**：用本機憑證的權杖連線 OpenAI 取得真實 5h／每週額度。
+- **Codex 即時額度**：用本機憑證的權杖連線 OpenAI 取得真實 5h／每週額度。另有本機備援：連線關閉或失敗時，改讀 Codex 自己寫在 `~/.codex/sessions` 的最新額度（不需連網）；連線成功但缺週額度時也由本機補上，Claude 與 Codex 的各時段在缺值時會沿用上次的值，直到重設時間為止。
 
 關閉以上兩項後即**完全離線**。網路碼僅限於 `Sources/AgentMeter/Network/`(有 CI `Scripts/check-offline.sh` 把關)。
 
