@@ -195,7 +195,14 @@ struct MenuContentView: View {
     private func heroFromQuota(_ w: QuotaWindow, label: String) -> some View {
         var full = label
         if let r = shortReset(until: w.resetsAt) { full += " · " + lang.tr("resets \(r)", "\(r) 重置") }
-        return HeroNumber(percent: disp(w.usedPercent), label: full, level: .forUsed(percent: w.usedPercent))
+        let next = resetMoment(w.resetsAt).map { lang.tr("Next reset: \($0)", "下次重置：\($0)") }
+        return HeroNumber(percent: disp(w.usedPercent), label: full, level: .forUsed(percent: w.usedPercent),
+                          detail: next)
+    }
+
+    /// "今天 23:00" / "明天 09:00" / "星期四 23:00" in the current UI language.
+    private func resetMoment(_ date: Date?) -> String? {
+        ResetMoment.text(for: date, language: lang.language == .zh ? .zh : .en)
     }
 
     /// `usedPct` is the used percentage; display honors the remaining/used setting.
@@ -236,7 +243,7 @@ struct MenuContentView: View {
 
     private func quotaMini(_ w: QuotaWindow) -> String {
         let pct = "\(Int(disp(w.usedPercent).rounded()))%"
-        if let r = shortReset(until: w.resetsAt) { return "\(pct) · \(r)" }
+        if let m = resetMoment(w.resetsAt) { return "\(pct) · \(m)" }
         return pct
     }
 

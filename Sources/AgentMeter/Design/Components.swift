@@ -60,6 +60,8 @@ struct HeroNumber: View {
     let percent: Double
     let label: String
     let level: StatusLevel
+    /// Optional second caption line under `label` (e.g. the next reset time).
+    var detail: String? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("\(Int(percent.rounded()))%")
@@ -67,6 +69,9 @@ struct HeroNumber: View {
                 .tracking(-1)
                 .foregroundStyle(statusColor(level))
             Text(label).font(.system(size: 12)).foregroundStyle(AM.ink2)
+            if let detail {
+                Text(detail).font(.system(size: 12)).monospacedDigit().foregroundStyle(AM.ink2)
+            }
         }
     }
 }
