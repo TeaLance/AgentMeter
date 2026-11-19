@@ -19,6 +19,11 @@ final class UsageStore: ObservableObject {
     @Published private(set) var lastRefresh: Date?
     @Published private(set) var isRefreshing = false
 
+    // Long-lived readers: they keep an incremental per-file cache (thread-safe)
+    // so each refresh only decodes newly appended log bytes.
+    private let claudeReader = ClaudeCodeReader(calendar: .autoupdatingCurrent)
+    private let codexReader = CodexReader(calendar: .autoupdatingCurrent)
+
     private var timer: Timer?
     private var interval: TimeInterval
 
@@ -43,11 +48,13 @@ final class UsageStore: ObservableObject {
     func refreshNow() {
         guard !isRefreshing else { return }
         isRefreshing = true
+        let claudeReader = self.claudeReader
+        let codexReader = self.codexReader
         Task.detached(priority: .utility) {
             let now = Date()
-            let claudeUsage = (try? ClaudeCodeReader().read(now: now))
+            let claudeUsage = (try? claudeReader.read(now: now))
                 ?? ToolUsage(tool: .claudeCode, available: false, lastUpdated: now)
-            let codexUsage = (try? CodexReader().read(now: now))
+            let codexUsage = (try? codexReader.read(now: now))
                 ?? ToolUsage(tool: .codex, available: false, lastUpdated: now)
             let quota = ClaudeStatusReader().read()
 

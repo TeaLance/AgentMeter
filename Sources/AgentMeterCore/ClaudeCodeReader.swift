@@ -9,6 +9,9 @@ public struct ClaudeCodeReader: UsageReader {
     private let projectsDirectory: URL
     private let calendar: Calendar
     private let rollingHours: Double
+    /// Compact rows per file, kept across `read(now:)` calls (copies of this
+    /// reader share it). Only bytes appended since the last read are decoded.
+    private let cache = IncrementalRowCache<ClaudeRow>()
 
     public init(projectsDirectory: URL, calendar: Calendar = .current, rollingHours: Double = 5) {
         self.projectsDirectory = projectsDirectory
@@ -41,37 +44,25 @@ public struct ClaudeCodeReader: UsageReader {
         var latestTimestamp: Date?
         var latestContextUsed = 0
         var latestModel: String?
+        var candidates = Set<String>()
 
         for file in jsonlFiles(in: projectsDirectory) {
             // A file last touched before any window we care about cannot hold
             // relevant rows (lines are appended in time order).
             if modificationDate(of: file) < windows.earliestRelevant { continue }
-            guard let content = try? String(contentsOf: file, encoding: .utf8) else { continue }
+            candidates.insert(file.path)
 
-            for rawLine in content.split(separator: "\n", omittingEmptySubsequences: true) {
-                guard let data = rawLine.data(using: .utf8),
-                      let line = try? decoder.decode(ClaudeLine.self, from: data),
-                      let usage = line.message?.usage,
-                      let tsString = line.timestamp,
-                      let timestamp = parseISOTimestamp(tsString) else { continue }
-
+            for row in cache.rows(for: file, parse: { ClaudeRow.parse($0, decoder: decoder) }) {
                 // De-duplicate resumed/duplicated rows by (message.id, requestId).
-                if let id = line.message?.id {
-                    let key = "\(id)|\(line.requestId ?? "")"
-                    if !seen.insert(key).inserted { continue }
-                }
+                if let key = row.dedupKey, !seen.insert(key).inserted { continue }
 
-                let breakdown = TokenBreakdown(
-                    input: usage.inputTokens ?? 0,
-                    output: usage.outputTokens ?? 0,
-                    cacheCreation: usage.cacheCreationInputTokens ?? 0,
-                    cacheRead: usage.cacheReadInputTokens ?? 0
-                )
+                let breakdown = row.breakdown
+                let timestamp = row.timestamp
 
                 if windows.isToday(timestamp) {
                     today += breakdown
                     messageCount += 1
-                    let key = ModelKey(raw: line.message?.model ?? "").id
+                    let key = ModelKey(raw: row.model ?? "").id
                     todayByModel[key, default: TokenBreakdown()] += breakdown
                 }
                 if windows.isInRollingWindow(timestamp) {
@@ -83,10 +74,12 @@ public struct ClaudeCodeReader: UsageReader {
                     // Context fill = everything fed to the model this turn (input + cache),
                     // excluding the generated output.
                     latestContextUsed = breakdown.input + breakdown.cacheRead + breakdown.cacheCreation
-                    latestModel = line.message?.model
+                    latestModel = row.model
                 }
             }
         }
+        // Forget files that were deleted or aged out of the window.
+        cache.retain(only: candidates)
 
         let contextWindow = latestTimestamp.map { _ -> ContextWindow in
             // Transcripts record the model id WITHOUT the [1m] tier suffix, so a
@@ -118,33 +111,52 @@ extension ClaudeCodeReader {
             // Lines are appended in time order, so a file last touched before the
             // range start cannot contain rows inside the range.
             if modificationDate(of: file) < range.start { continue }
-            guard let content = try? String(contentsOf: file, encoding: .utf8) else { continue }
-
-            for rawLine in content.split(separator: "\n", omittingEmptySubsequences: true) {
-                guard let data = rawLine.data(using: .utf8),
-                      let line = try? decoder.decode(ClaudeLine.self, from: data),
-                      let usage = line.message?.usage,
-                      let tsString = line.timestamp,
-                      let timestamp = parseISOTimestamp(tsString),
-                      acc.contains(timestamp) else { continue }
-
-                if let id = line.message?.id {
-                    let key = "\(id)|\(line.requestId ?? "")"
-                    if !seen.insert(key).inserted { continue }
-                }
-
-                let breakdown = TokenBreakdown(
-                    input: usage.inputTokens ?? 0,
-                    output: usage.outputTokens ?? 0,
-                    cacheCreation: usage.cacheCreationInputTokens ?? 0,
-                    cacheRead: usage.cacheReadInputTokens ?? 0
-                )
-                acc.add(breakdown, modelKey: ModelKey(raw: line.message?.model ?? "").id, at: timestamp)
-                acc.addMessage(at: timestamp)
+            forEachLine(in: file) { bytes in
+                guard let row = ClaudeRow.parse(bytes, decoder: decoder),
+                      acc.contains(row.timestamp) else { return }
+                if let key = row.dedupKey, !seen.insert(key).inserted { return }
+                acc.add(row.breakdown, modelKey: ModelKey(raw: row.model ?? "").id, at: row.timestamp)
+                acc.addMessage(at: row.timestamp)
             }
         }
         return acc.finish()
     }
+}
+
+// MARK: - Compact row
+
+/// The only fields aggregation needs from one usage line.
+struct ClaudeRow: Sendable {
+    let timestamp: Date
+    /// `"<message.id>|<requestId>"`, nil when the line has no message id (never de-duplicated).
+    let dedupKey: String?
+    let breakdown: TokenBreakdown
+    let model: String?
+
+    /// Most lines are huge tool outputs; only those containing `usage` are decoded.
+    static func parse(_ bytes: UnsafeRawBufferPointer, decoder: JSONDecoder) -> ClaudeRow? {
+        guard lineContains(bytes, "usage"),
+              let line = try? decoder.decode(ClaudeLine.self, from: Data(bytes)),
+              let usage = line.message?.usage,
+              let tsString = line.timestamp,
+              let timestamp = parseISOTimestamp(tsString) else { return nil }
+        let key = line.message?.id.map { "\($0)|\(line.requestId ?? "")" }
+        return ClaudeRow(
+            timestamp: timestamp, dedupKey: key,
+            breakdown: TokenBreakdown(
+                input: usage.inputTokens ?? 0,
+                output: usage.outputTokens ?? 0,
+                cacheCreation: usage.cacheCreationInputTokens ?? 0,
+                cacheRead: usage.cacheReadInputTokens ?? 0),
+            model: line.message?.model)
+    }
+}
+
+extension ClaudeCodeReader {
+    /// File paths currently held by the incremental cache (for tests).
+    var cachedPaths: Set<String> { cache.cachedPaths }
+    /// I/O counters of the incremental cache (for tests).
+    var cacheStats: IncrementalReadStats { cache.ioStats }
 }
 
 // MARK: - Transcript line shapes (only the fields we need)

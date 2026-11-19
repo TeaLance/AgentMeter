@@ -10,6 +10,8 @@ public struct CodexReader: UsageReader {
     private let sessionsDirectory: URL
     private let calendar: Calendar
     private let rollingHours: Double
+    /// Compact rows per file, kept across `read(now:)` calls (copies share it).
+    private let cache = IncrementalRowCache<CodexRow>()
 
     public init(sessionsDirectory: URL, calendar: Calendar = .current, rollingHours: Double = 5) {
         self.sessionsDirectory = sessionsDirectory
@@ -40,39 +42,31 @@ public struct CodexReader: UsageReader {
         var latestTimestamp: Date?
         var latestContextUsed = 0
         var latestWindow = 0
+        var candidates = Set<String>()
 
         for file in jsonlFiles(in: sessionsDirectory) {
             if modificationDate(of: file) < windows.earliestRelevant { continue }
-            guard let content = try? String(contentsOf: file, encoding: .utf8) else { continue }
+            candidates.insert(file.path)
 
-            for rawLine in content.split(separator: "\n", omittingEmptySubsequences: true) {
-                guard let data = rawLine.data(using: .utf8),
-                      let line = try? decoder.decode(CodexLine.self, from: data),
-                      let tsString = line.timestamp,
-                      let timestamp = parseISOTimestamp(tsString) else { continue }
-
-                let kind = line.payload?.type ?? line.type
+            for row in cache.rows(for: file, parse: { CodexRow.parse($0, decoder: decoder) }) {
+                let timestamp = row.timestamp
                 let isToday = windows.isToday(timestamp)
 
-                switch kind {
-                case "token_count":
-                    guard let info = line.payload?.info, let delta = info.lastTokenUsage else { continue }
-                    let breakdown = delta.breakdown
-                    if isToday { today += breakdown }
-                    if windows.isInRollingWindow(timestamp) { rolling += breakdown }
-                    if latestTimestamp == nil || timestamp > latestTimestamp! {
-                        latestTimestamp = timestamp
-                        // Current context fill = this turn's full input prompt (incl cached).
-                        latestContextUsed = delta.inputTokens ?? 0
-                        latestWindow = info.modelContextWindow ?? 0
-                    }
-                case "agent_message":
+                if row.isMessage {
                     if isToday { messageCount += 1 }
-                default:
                     continue
+                }
+                if isToday { today += row.breakdown }
+                if windows.isInRollingWindow(timestamp) { rolling += row.breakdown }
+                if latestTimestamp == nil || timestamp > latestTimestamp! {
+                    latestTimestamp = timestamp
+                    // Current context fill = this turn's full input prompt (incl cached).
+                    latestContextUsed = row.contextUsed
+                    latestWindow = row.contextWindow
                 }
             }
         }
+        cache.retain(only: candidates)
 
         let contextWindow = (latestTimestamp != nil && latestWindow > 0)
             ? ContextWindow(used: latestContextUsed, total: latestWindow)
@@ -99,36 +93,73 @@ extension CodexReader {
 
         for file in jsonlFiles(in: sessionsDirectory) {
             if modificationDate(of: file) < range.start { continue }
-            guard let content = try? String(contentsOf: file, encoding: .utf8) else { continue }
 
             var currentModel = ModelKey.unknown.id   // reset per file
-            for rawLine in content.split(separator: "\n", omittingEmptySubsequences: true) {
-                guard let data = rawLine.data(using: .utf8),
-                      let line = try? decoder.decode(CodexLine.self, from: data) else { continue }
+            forEachLine(in: file) { bytes in
+                // Pre-filter: turn_context is needed to track the model, so it must pass too.
+                guard lineContains(bytes, "token_count") || lineContains(bytes, "agent_message")
+                        || lineContains(bytes, "turn_context"),
+                      let line = try? decoder.decode(CodexLine.self, from: Data(bytes)) else { return }
                 let kind = line.payload?.type ?? line.type
 
                 if kind == "turn_context", let m = line.payload?.model {
                     currentModel = ModelKey(raw: m).id
-                    continue
+                    return
                 }
 
                 guard let tsString = line.timestamp,
                       let timestamp = parseISOTimestamp(tsString),
-                      acc.contains(timestamp) else { continue }
+                      acc.contains(timestamp) else { return }
 
                 switch kind {
                 case "token_count":
-                    guard let delta = line.payload?.info?.lastTokenUsage else { continue }
+                    guard let delta = line.payload?.info?.lastTokenUsage else { return }
                     acc.add(delta.breakdown, modelKey: currentModel, at: timestamp)
                 case "agent_message":
                     acc.addMessage(at: timestamp)
                 default:
-                    continue
+                    return
                 }
             }
         }
         return acc.finish()
     }
+}
+
+// MARK: - Compact row
+
+/// A `token_count` delta or an `agent_message`; the only lines `read(now:)` uses.
+struct CodexRow: Sendable {
+    let timestamp: Date
+    let isMessage: Bool
+    let breakdown: TokenBreakdown
+    let contextUsed: Int
+    let contextWindow: Int
+
+    static func parse(_ bytes: UnsafeRawBufferPointer, decoder: JSONDecoder) -> CodexRow? {
+        guard lineContains(bytes, "token_count") || lineContains(bytes, "agent_message"),
+              let line = try? decoder.decode(CodexLine.self, from: Data(bytes)),
+              let tsString = line.timestamp,
+              let timestamp = parseISOTimestamp(tsString) else { return nil }
+        switch line.payload?.type ?? line.type {
+        case "token_count":
+            guard let info = line.payload?.info, let delta = info.lastTokenUsage else { return nil }
+            return CodexRow(timestamp: timestamp, isMessage: false, breakdown: delta.breakdown,
+                            contextUsed: delta.inputTokens ?? 0, contextWindow: info.modelContextWindow ?? 0)
+        case "agent_message":
+            return CodexRow(timestamp: timestamp, isMessage: true, breakdown: TokenBreakdown(),
+                            contextUsed: 0, contextWindow: 0)
+        default:
+            return nil
+        }
+    }
+}
+
+extension CodexReader {
+    /// File paths currently held by the incremental cache (for tests).
+    var cachedPaths: Set<String> { cache.cachedPaths }
+    /// I/O counters of the incremental cache (for tests).
+    var cacheStats: IncrementalReadStats { cache.ioStats }
 }
 
 // MARK: - Rollout line shapes (only the fields we need)
