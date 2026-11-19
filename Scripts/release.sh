@@ -15,17 +15,25 @@ APP_NAME="AgentMeter"
 BUNDLE_ID="com.agentmeter.app"
 VERSION="${1:?usage: Scripts/release.sh <version, e.g. 0.1.0>}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-AgentMeter-notary}"
+MIN_MACOS="14.0"   # keep in sync with Package.swift `platforms`
+SDK_VERSION="$(xcrun --show-sdk-version)"
+# SwiftPM's default build system (Swift 6.4+) links with the deployment target
+# as the SDK version (LC_BUILD_VERSION sdk 14.0), so macOS treats the app as
+# built with an old SDK and drops Liquid Glass. Pass the real SDK explicitly.
+# (`--build-system native` is no fix here: universal builds ignore it.)
+LINK_SDK=(-Xlinker -platform_version -Xlinker macos -Xlinker "$MIN_MACOS" -Xlinker "$SDK_VERSION")
 cd "$ROOT"
 
 echo "==> Universal release build"
-swift build -c release --arch arm64 --arch x86_64
-BIN="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/$APP_NAME"
+swift build -c release --arch arm64 --arch x86_64 "${LINK_SDK[@]}"
+BIN="$(swift build -c release --arch arm64 --arch x86_64 "${LINK_SDK[@]}" --show-bin-path)/$APP_NAME"
 
 echo "==> Assemble .app"
 APP="$ROOT/dist/$APP_NAME.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/$APP_NAME"
+"$ROOT/Scripts/check-sdk-version.sh" "$APP/Contents/MacOS/$APP_NAME"
 cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -41,7 +49,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleVersion</key><string>${VERSION}</string>
     <key>CFBundleShortVersionString</key><string>${VERSION}</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>LSMinimumSystemVersion</key><string>14.0</string>
+    <key>LSMinimumSystemVersion</key><string>${MIN_MACOS}</string>
     <key>LSUIElement</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
     <key>NSHighResolutionCapable</key><true/>
