@@ -44,8 +44,29 @@ final class ResetMomentTests: XCTestCase {
     func testRoundsToNearestMinute() {
         XCTAssertEqual(zh(utc(2026, 11, 19, 14, 59, 47)), "今天 23:00")
         XCTAssertEqual(zh(utc(2026, 11, 19, 15, 0, 29)), "今天 23:00")
-        // 23:59:40 rounds to midnight, which is tomorrow.
-        XCTAssertEqual(zh(utc(2026, 11, 19, 15, 59, 40)), "明天 00:00")
+        // 23:59:40 rounds to midnight, which reads as the end of today.
+        XCTAssertEqual(zh(utc(2026, 11, 19, 15, 59, 40)), "今天 24:00")
+    }
+
+    func testMidnightReadsAs2400OfThePreviousDay() {
+        // Midnight is the end of the day before, so "明天 00:00" (Fri 00:00)
+        // reads as "今天 24:00" — tonight, not tomorrow.
+        XCTAssertEqual(zh(utc(2026, 11, 19, 16)), "今天 24:00")          // Fri 11/20 00:00
+        XCTAssertEqual(en(utc(2026, 11, 19, 16)), "today 24:00")
+        XCTAssertEqual(zh(utc(2026, 11, 20, 16)), "明天 24:00")          // Sat 11/21 00:00
+        XCTAssertEqual(en(utc(2026, 11, 20, 16)), "tomorrow 24:00")
+        XCTAssertEqual(zh(utc(2026, 11, 21, 16)), "星期六 24:00")        // Sun 11/22 00:00
+        XCTAssertEqual(en(utc(2026, 11, 21, 16)), "Sat 24:00")
+        XCTAssertEqual(zh(utc(2026, 11, 26, 16)), "下星期四 24:00")      // Fri 11/27 00:00
+        XCTAssertEqual(zh(utc(2026, 11, 27, 16)), "11/27 24:00")         // Sat 11/28 00:00
+        // One minute past midnight is still the new day.
+        XCTAssertEqual(zh(utc(2026, 11, 19, 16, 1)), "明天 00:01")
+    }
+
+    func testMidnightThatHasJustStartedStaysToday0000() {
+        // now = Fri 00:00:10; a reset 10 s later rounds to Fri 00:00, which is
+        // the start of today — "今天 24:00" would point a whole day ahead.
+        XCTAssertEqual(zh(utc(2026, 11, 19, 16, 0, 20), now: utc(2026, 11, 19, 16, 0, 10)), "今天 00:00")
     }
 
     func testNonGregorianSystemCalendarStillShowsGregorianDate() {
@@ -71,5 +92,7 @@ final class ResetMomentTests: XCTestCase {
         let nyNow = utc(2026, 11, 1, 2)
         XCTAssertEqual(zh(utc(2026, 11, 2, 4), now: nyNow, calendar: ny), "明天 23:00")      // Sun 23:00 EST
         XCTAssertEqual(zh(utc(2026, 11, 2, 5, 30), now: nyNow, calendar: ny), "星期一 00:30") // Mon 00:30 EST
+        // Midnight after the 25-hour Sunday is still Sunday 24:00.
+        XCTAssertEqual(zh(utc(2026, 11, 2, 5), now: nyNow, calendar: ny), "明天 24:00")      // Mon 00:00 EST
     }
 }

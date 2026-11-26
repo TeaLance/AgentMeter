@@ -4,6 +4,7 @@ import Foundation
 /// "今天 23:00", "明天 09:00", "星期四 23:00", "下星期四 23:00" (same weekday a
 /// week out), or "11/27 23:00" beyond that. English: "today 23:00",
 /// "tomorrow 09:00", "Thu 23:00", "next Thu 23:00", "11/27 23:00".
+/// Midnight is the end of the previous day: "今天 24:00", not "明天 00:00".
 public enum ResetMoment {
     public enum Language: Sendable { case zh, en }
 
@@ -21,11 +22,18 @@ public enum ResetMoment {
         // lunar/other calendar would otherwise print its own month/day ("10/19").
         var g = Calendar(identifier: .gregorian)
         g.timeZone = calendar.timeZone
-        let c = g.dateComponents([.month, .day, .hour, .minute, .weekday], from: rounded)
-        guard let month = c.month, let day = c.day, let hour = c.hour, let minute = c.minute,
+        let today = g.startOfDay(for: now)
+        // Midnight is shown as 24:00 of the day before ("明天 00:00" → "今天 24:00"),
+        // so a reset tonight doesn't read as tomorrow. Not for a midnight that has
+        // already started today: "今天 24:00" would then point a day ahead.
+        let clock = g.dateComponents([.hour, .minute], from: rounded)
+        let isMidnight = clock.hour == 0 && clock.minute == 0 && g.startOfDay(for: rounded) > today
+        let dayOf = isMidnight ? rounded.addingTimeInterval(-1) : rounded
+        let c = g.dateComponents([.month, .day, .weekday], from: dayOf)
+        guard let month = c.month, let day = c.day,
+              let hour = clock.hour.map({ isMidnight ? 24 : $0 }), let minute = clock.minute,
               let weekday = c.weekday, (1...7).contains(weekday),
-              let days = g.dateComponents([.day], from: g.startOfDay(for: now),
-                                          to: g.startOfDay(for: rounded)).day
+              let days = g.dateComponents([.day], from: today, to: g.startOfDay(for: dayOf)).day
         else { return nil }
 
         let dayText: String
